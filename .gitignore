@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+build-output/
+artifacts/
+Camera-WiFi-Transfer-*.zip
+*.spec.bak
+*.part
+*.log
+vendor/airmtp/appdata/
+.idea/
+.vscode/
