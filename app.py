@@ -25,7 +25,7 @@ from windows_pairing import PAIRING_CDB, PairingError, build_pairing_payload, pa
 
 
 APP_NAME = "Camera Wi-Fi Transfer"
-APP_VERSION = "0.3.1-beta"
+APP_VERSION = "0.3.2-beta"
 PAIRING_GUID = "0xa9fdb6005452ffff-0x3aa907283c52ffff"
 IMAGE_EXTENSIONS = ["JPG", "JPEG", "JPE", "HEIF", "HIF"]
 RAW_EXTENSIONS = [
@@ -427,7 +427,6 @@ class ImportApp(tk.Tk):
         self.overall_total = 0
         self.session_downloaded = 0
         self.session_skipped = 0
-        self.selected_only = False
 
         self.events: queue.Queue[tuple[str, Any]] = queue.Queue()
         self.worker: threading.Thread | None = None
@@ -450,7 +449,7 @@ class ImportApp(tk.Tk):
             self.storage_text.set(
                 self.t(
                     "storage_status",
-                    label="SDXC",
+                    label=self.t("memory_card"),
                     free="31.8 GB",
                     total="59.6 GB",
                     percent=53,
@@ -598,13 +597,6 @@ class ImportApp(tk.Tk):
             command=self.start_transfer,
         )
         self.start_button.pack(side=LEFT)
-        self.selected_button = ttk.Button(
-            action_row,
-            text=self.t("download_selected"),
-            style="Secondary.TButton",
-            command=lambda: self.start_transfer(selected_only=True),
-        )
-        self.selected_button.pack(side=LEFT, padx=(8, 0))
         self.stop_button = ttk.Button(action_row, text=self.t("stop"), command=self.stop_transfer, state="disabled")
         self.stop_button.pack(side=LEFT, padx=(8, 0))
         ttk.Button(action_row, text=self.t("sony_pairing"), command=self.open_setup).pack(side=RIGHT)
@@ -659,13 +651,11 @@ class ImportApp(tk.Tk):
             for widget in (self.jpeg_check, self.raw_check, self.video_check, self.date_check):
                 widget.configure(state="disabled")
             self.camera_ip_entry.configure(state="disabled")
-            self.selected_button.configure(state="disabled")
         else:
             self.instruction_text.set(self.t("network_instruction"))
             for widget in (self.jpeg_check, self.raw_check, self.video_check, self.date_check):
                 widget.configure(state="normal")
             self.camera_ip_entry.configure(state="normal")
-            self.selected_button.configure(state="normal")
         if persist:
             self.save_settings()
 
@@ -720,7 +710,7 @@ class ImportApp(tk.Tk):
             }
         )
 
-    def start_transfer(self, selected_only: bool = False) -> None:
+    def start_transfer(self) -> None:
         if self.worker and self.worker.is_alive():
             return
 
@@ -740,18 +730,8 @@ class ImportApp(tk.Tk):
             return
 
         self.save_settings()
-        if selected_only and self.mode.get() != "ptpip":
-            return
-        if selected_only and not messagebox.askokcancel(
-            self.t("selected_title"),
-            self.t("selected_instructions"),
-            parent=self,
-        ):
-            return
-        self.selected_only = selected_only
         self.cancel_requested.clear()
         self.start_button.configure(state="disabled")
-        self.selected_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
         self.progress.configure(mode="indeterminate")
         self.progress.start(12)
@@ -873,7 +853,7 @@ class ImportApp(tk.Tk):
                 "--downloadhistory",
                 "skipfiles",
                 "--cameratransferlist",
-                "exitifnotavail" if self.selected_only else "ignore",
+                "ignore",
                 "--transferorder",
                 "newestfirst",
                 "--retrycount",
@@ -1103,7 +1083,6 @@ class ImportApp(tk.Tk):
         self.progress.stop()
         self.progress.configure(mode="determinate", value=100 if success else 0)
         self.start_button.configure(state="normal")
-        self.selected_button.configure(state="normal" if self.mode.get() == "ptpip" else "disabled")
         self.stop_button.configure(state="disabled")
         if success:
             self.status_text.set(self.t("transfer_complete"))

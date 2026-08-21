@@ -38,12 +38,6 @@ MESSAGES: dict[str, dict[str, str]] = {
         "camera_ip": "Camera IP (optional)",
         "camera_ip_hint": "Automatic discovery when empty",
         "download_new": "Download new files",
-        "download_selected": "Download selected",
-        "selected_title": "Download selected files",
-        "selected_instructions": (
-            "First select the photos in the camera's Send to Computer / PC transfer list, then start that mode. "
-            "This button downloads only the camera's selected transfer list. Continue?"
-        ),
         "stop": "Stop",
         "sony_pairing": "Sony USB pairing…",
         "copy_progress": " Transfer log ",
@@ -170,12 +164,6 @@ MESSAGES: dict[str, dict[str, str]] = {
         "camera_ip": "IP камеры (необязательно)",
         "camera_ip_hint": "Пусто — автоматический поиск",
         "download_new": "Скачать новые",
-        "download_selected": "Скачать выбранные",
-        "selected_title": "Скачать выбранные файлы",
-        "selected_instructions": (
-            "Сначала отметьте нужные фото в списке передачи «Отправить на компьютер» / PC transfer на камере, "
-            "затем запустите этот режим. Кнопка скачает только выбранный камерой список. Продолжить?"
-        ),
         "stop": "Остановить",
         "sony_pairing": "USB-привязка Sony…",
         "copy_progress": " Ход копирования ",

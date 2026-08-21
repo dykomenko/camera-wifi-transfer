@@ -863,8 +863,13 @@ def parseMptStorageIds(data):
 # parses the raw data from MTP_OP_GetStorageInfo into a MtpStorageInfo tuple
 #		
 def parseMtpStorageInfo(data):
-	(storageType,fileSystemType,accessCapability,maxCapacityBytes,freeSpaceBytes,freeSpaceInImages,storageDescription) = struct.unpack('<HHHQQIB', data[0:27])
-	(volumeLabel,byteLen) = mtpCountedUtf16ToPythonUnicodeStr(data[27:])	
+	# PTP StorageInfo has two consecutive counted UTF-16 strings after the
+	# 26-byte fixed header: StorageDescription, then VolumeLabel. The original
+	# airMTP parser accidentally treated the first string's count byte as the
+	# description and decoded its contents as the volume label.
+	(storageType,fileSystemType,accessCapability,maxCapacityBytes,freeSpaceBytes,freeSpaceInImages) = struct.unpack('<HHHQQI', data[0:26])
+	(storageDescription,storageDescriptionByteLen) = mtpCountedUtf16ToPythonUnicodeStr(data[26:])
+	(volumeLabel,volumeLabelByteLen) = mtpCountedUtf16ToPythonUnicodeStr(data[26+storageDescriptionByteLen:])
 	return MtpStorageInfoTuple(storageType, fileSystemType, accessCapability, maxCapacityBytes,
 						freeSpaceBytes, freeSpaceInImages, storageDescription, volumeLabel)						
 	
@@ -1439,7 +1444,10 @@ def getMtpStorageInfo():
 				g.mtpStorageInfoList.append(mtpStorageInfo)
 	if os.environ.get('CAMERA_WIFI_TRANSFER_GUI') == '1':
 		for mtpStorageInfo in g.mtpStorageInfoList:
-			label = mtpStorageInfo.volumeLabel or mtpStorageInfo.storageDescription or "Card"
+			# Only VolumeLabel is a real user-assigned card name. Generic
+			# StorageDescription values such as "Storage Media" are not labels;
+			# leave this empty so the localized GUI can say "Memory card".
+			label = mtpStorageInfo.volumeLabel
 			cwftGuiEvent('STORAGE', mtpStorageInfo.maxCapacityBytes, mtpStorageInfo.freeSpaceBytes, label)
 
 				

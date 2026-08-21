@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2-beta — 2026-08-21
+
+- Fixed the MTP StorageInfo parser to read StorageDescription and VolumeLabel as separate strings.
+- Shows a localized generic memory-card label when the camera does not expose its user-assigned volume name.
+- Removed the camera-side selected-transfer action and its UI at user request.
+- Verified the corrected storage fields live on Sony ILCE-6500.
+
 ## 0.3.1-beta — 2026-08-21
 
 - Fixed a Windows encoding crash when a card label or filename contains Unicode characters.

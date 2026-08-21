@@ -3,7 +3,7 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)](https://github.com/dykomenko/camera-wifi-transfer/releases)
 [![Windows build](https://github.com/dykomenko/camera-wifi-transfer/actions/workflows/windows-build.yml/badge.svg)](https://github.com/dykomenko/camera-wifi-transfer/actions/workflows/windows-build.yml)
 [![GUI](https://img.shields.io/badge/interface-desktop%20GUI-2ea44f)](README.md)
-[![Tests](https://img.shields.io/badge/tests-25%20passing-2ea44f)](README.md)
+[![Tests](https://img.shields.io/badge/tests-27%20passing-2ea44f)](README.md)
 [![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 [Русский](README_RU.md)
@@ -22,7 +22,6 @@ Camera companion apps are often slow, unreliable, or phone-first. Camera Wi-Fi T
 - Clean per-file status plus an overall `current / total` progress bar
 - Card capacity and free-space display when the camera reports it
 - Optional completion notification with download and skip counts
-- Separate **Download selected** action for cameras exposing an in-camera transfer list
 - Automatic PTP/IP discovery on the real LAN adapter, even with VirtualBox or Hyper-V installed
 - Optional manual camera IP for devices that do not answer discovery
 - Original JPEG/HEIF, common RAW formats, and video files
@@ -52,8 +51,6 @@ End-to-end verified on **Sony ILCE-6500 (a6500)**: native Windows USB pairing, d
 3. Choose a destination and file types.
 4. Enable `Send to Computer`, `PC transfer`, or the equivalent mode on the camera.
 5. Click **Download new files**.
-
-To transfer only marked files, first select them in the camera's PC-transfer list and click **Download selected**. This optional camera-side list is not available on every model; the normal button always processes all new matching files.
 
 Settings are stored per Windows user in:
 
