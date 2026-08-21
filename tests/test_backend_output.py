@@ -47,6 +47,18 @@ class BackendOutputTests(unittest.TestCase):
         self.assertFalse(done.item_skipped)
         self.assertEqual((storage.storage_total, storage.storage_free), (64000000000, 32000000000))
 
+    def test_json_escaped_unicode_fields(self) -> None:
+        parser = BackendOutputParser()
+        item = parser.parse(
+            'CWFT\tITEM\t"1"\t"2"\t"\\u0424\\u043e\\u0442\\u043e 01.ARW"\t"123"'
+        )
+        storage = parser.parse(
+            'CWFT\tSTORAGE\t"64000000000"\t"32000000000"\t"\\u041a\\u0430\\u0440\\u0442\\u0430 \\ud83d\\udcf7"'
+        )
+
+        self.assertEqual(item.filename, "Фото 01.ARW")
+        self.assertEqual(storage.storage_label, "Карта 📷")
+
     def test_legacy_joined_progress_is_collapsed(self) -> None:
         parser = BackendOutputParser()
         parsed = parser.parse('Downloading "DSC01152.ARW": 0% 1% 2% 99% 100%')

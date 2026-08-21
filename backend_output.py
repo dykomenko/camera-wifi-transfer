@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import re
 
 
@@ -10,6 +11,22 @@ DOWNLOAD_RE = re.compile(r'^Downloading\s+"([^"]+)":\s*(\d{1,3})%\s*$')
 PROGRESS_RE = re.compile(r"^(\d{1,3})%$")
 LEGACY_JOINED_RE = re.compile(r'^Downloading\s+"([^"]+)":.*?(\d{1,3})%\s*$')
 GUI_EVENT_RE = re.compile(r"^CWFT\t([A-Z_]+)(?:\t(.*))?$")
+
+
+def decode_gui_field(value: str) -> str:
+    """Decode the ASCII-only JSON fields emitted by the bundled backend.
+
+    Plain fields remain supported for compatibility with 0.3.0-beta builds.
+    """
+
+    if value.startswith('"'):
+        try:
+            decoded = json.loads(value)
+            if isinstance(decoded, str):
+                return decoded
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return value
 
 
 def clean_backend_text(value: str) -> str:
@@ -48,7 +65,7 @@ class BackendOutputParser:
         gui_event = GUI_EVENT_RE.fullmatch(line)
         if gui_event:
             kind = gui_event.group(1)
-            fields = (gui_event.group(2) or "").split("\t")
+            fields = [decode_gui_field(field) for field in (gui_event.group(2) or "").split("\t")]
             try:
                 if kind == "TOTAL" and fields:
                     return ParsedBackendLine(total=max(0, int(fields[0])))

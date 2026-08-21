@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1-beta — 2026-08-21
+
+- Fixed a Windows encoding crash when a card label or filename contains Unicode characters.
+- Structured backend events are now ASCII-safe JSON fields and remain backward compatible.
+
 ## 0.3.0-beta — 2026-08-21
 
 - Replaced console-style repeated percentages with structured GUI progress events.

@@ -25,7 +25,7 @@ from windows_pairing import PAIRING_CDB, PairingError, build_pairing_payload, pa
 
 
 APP_NAME = "Camera Wi-Fi Transfer"
-APP_VERSION = "0.3.0-beta"
+APP_VERSION = "0.3.1-beta"
 PAIRING_GUID = "0xa9fdb6005452ffff-0x3aa907283c52ffff"
 IMAGE_EXTENSIONS = ["JPG", "JPEG", "JPE", "HEIF", "HIF"]
 RAW_EXTENSIONS = [

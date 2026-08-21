@@ -3,7 +3,7 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)](https://github.com/dykomenko/camera-wifi-transfer/releases)
 [![Windows build](https://github.com/dykomenko/camera-wifi-transfer/actions/workflows/windows-build.yml/badge.svg)](https://github.com/dykomenko/camera-wifi-transfer/actions/workflows/windows-build.yml)
 [![GUI](https://img.shields.io/badge/interface-desktop%20GUI-2ea44f)](README.md)
-[![Tests](https://img.shields.io/badge/tests-24%20passing-2ea44f)](README.md)
+[![Tests](https://img.shields.io/badge/tests-25%20passing-2ea44f)](README.md)
 [![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 [Русский](README_RU.md)

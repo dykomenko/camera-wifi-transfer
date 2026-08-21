@@ -17,6 +17,7 @@ import six
 from six.moves import xrange
 from six.moves import cPickle as pickle
 import argparse
+import json
 import mtpwifi
 from mtpdef import *
 import strutil
@@ -597,7 +598,10 @@ def cwftGuiEvent(kind, *values):
 	"""Emit newline-delimited events for the Camera Wi-Fi Transfer GUI."""
 	if os.environ.get('CAMERA_WIFI_TRANSFER_GUI') != '1':
 		return
-	cleanValues = [str(value).replace('\t', ' ').replace('\r', ' ').replace('\n', ' ') for value in values]
+	# PyInstaller inherits a legacy Windows console encoding (often cp1251 or
+	# cp1252). JSON's ASCII escaping keeps volume labels and filenames safe even
+	# when they contain characters that encoding cannot represent.
+	cleanValues = [json.dumps(six.text_type(value), ensure_ascii=True) for value in values]
 	consoleWriteLine("\nCWFT\t{:s}{:s}\n".format(kind, ("\t" + "\t".join(cleanValues)) if cleanValues else ""))
 
 
