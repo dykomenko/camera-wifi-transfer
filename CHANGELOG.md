@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.3-beta — 2026-09-05
+
+- Fixed a bug (PTP/IP mode) where a photo could be silently marked "already downloaded" and skipped even though it was no longer in the destination folder — for example after it was manually deleted, moved, or backed up elsewhere. The backend kept its own persistent history of every filename it had ever transferred and trusted that ledger instead of checking the destination folder, which risked photos being erased from the camera without ever actually reaching the PC.
+- The duplicate check now looks only at the destination folder: a file is skipped solely when it is still physically present there. No history ledger is consulted or trusted anymore.
+
 ## 0.3.2-beta — 2026-08-21
 
 - Fixed the MTP StorageInfo parser to read StorageDescription and VolumeLabel as separate strings.

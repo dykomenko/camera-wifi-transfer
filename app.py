@@ -25,7 +25,7 @@ from windows_pairing import PAIRING_CDB, PairingError, build_pairing_payload, pa
 
 
 APP_NAME = "Camera Wi-Fi Transfer"
-APP_VERSION = "0.3.2-beta"
+APP_VERSION = "0.3.3-beta"
 PAIRING_GUID = "0xa9fdb6005452ffff-0x3aa907283c52ffff"
 IMAGE_EXTENSIONS = ["JPG", "JPEG", "JPE", "HEIF", "HIF"]
 RAW_EXTENSIONS = [
@@ -851,7 +851,13 @@ class ImportApp(tk.Tk):
                 "--ifexists",
                 "skip",
                 "--downloadhistory",
-                "skipfiles",
+                # "skipfiles" trusts a persistent per-camera ledger of filenames
+                # ever downloaded, even if that file no longer exists in the
+                # destination folder (deleted, moved, or synced elsewhere) -
+                # this is what silently "skipped" real photos before. Instead
+                # rely solely on --ifexists, which skips a file only when it
+                # is actually still present in the destination folder.
+                "ignore",
                 "--cameratransferlist",
                 "ignore",
                 "--transferorder",
@@ -979,6 +985,10 @@ class ImportApp(tk.Tk):
             ("No camera found via SSDP Discovery.", self.t("camera_not_found")),
             ("files downloaded", self.t("files_downloaded")),
             ("previously-downloaded files skipped", self.t("files_skipped")),
+            (
+                "files skipped because they already existed in output directory",
+                self.t("files_skipped_existing"),
+            ),
         )
         result = line
         for source, target in replacements:
