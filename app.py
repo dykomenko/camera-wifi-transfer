@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import uuid
 from pathlib import Path
 from tkinter import BOTH, END, LEFT, RIGHT, X, filedialog, messagebox
@@ -20,13 +21,13 @@ from tkinter import ttk
 from typing import Any
 
 from backend_output import BackendOutputParser, clean_backend_text
-from localization import Translator, resolve_language
-from sony_soap import SonySoapClient, SonySoapError
+from localization import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, Translator, resolve_language
+from sony_soap import SonySoapClient, SonySoapError, TransportError
 from windows_pairing import PAIRING_CDB, PairingError, build_pairing_payload, pair_camera
 
 
 APP_NAME = "Camera Wi-Fi Transfer"
-APP_VERSION = "0.3.4-beta"
+APP_VERSION = "0.3.5-beta"
 PAIRING_GUID = "0xa9fdb6005452ffff-0x3aa907283c52ffff"
 IMAGE_EXTENSIONS = ["JPG", "JPEG", "JPE", "HEIF", "HIF"]
 RAW_EXTENSIONS = [
@@ -35,6 +36,12 @@ RAW_EXTENSIONS = [
     "SR2", "SRW", "X3F",
 ]
 VIDEO_EXTENSIONS = ["AVI", "M2TS", "MOV", "MP4", "MTS", "MXF", "THM", "XML"]
+# When the transfer starts automatically the camera may still be switching
+# into "Send to Computer", so keep looking for it this long.
+CAMERA_WAIT_SECONDS = 5 * 60
+CAMERA_RETRY_PAUSE_SECONDS = 5
+# airMTP exit code for "camera not found / could not connect".
+BACKEND_ERRNO_COULDNT_CONNECT = 4004
 
 
 def executable_dir() -> Path:
@@ -525,11 +532,7 @@ class ImportApp(tk.Tk):
         language_frame = ttk.Frame(header)
         language_frame.pack(side=RIGHT, anchor="ne", padx=(12, 0))
         ttk.Label(language_frame, text=self.t("language"), style="Muted.TLabel").pack(anchor="e")
-        language_labels = {
-            "auto": self.t("language_auto"),
-            "ru": self.t("language_ru"),
-            "en": self.t("language_en"),
-        }
+        language_labels = {"auto": self.t("language_auto"), **LANGUAGE_NAMES}
         self.language_label_to_code = {label: code for code, label in language_labels.items()}
         self.language_choice.set(language_labels.get(self.language_preference.get(), language_labels["auto"]))
         self.language_combo = ttk.Combobox(
@@ -537,7 +540,7 @@ class ImportApp(tk.Tk):
             textvariable=self.language_choice,
             values=list(language_labels.values()),
             state="readonly",
-            width=11,
+            width=13,
         )
         self.language_combo.pack(anchor="e", pady=(3, 0))
         self.language_combo.bind("<<ComboboxSelected>>", self._change_language)
@@ -745,14 +748,14 @@ class ImportApp(tk.Tk):
 
     def _auto_start_transfer(self) -> None:
         self._append_log(self.t("auto_start_log"))
-        self.start_transfer()
+        self.start_transfer(wait_for_camera=True)
 
     def _set_title_progress(self, percent: int | None) -> None:
         # The title doubles as a taskbar progress readout while minimized.
         base = f"{self.t('app_title')}  {APP_VERSION}"
         self.title(base if percent is None else f"{percent}% · {base}")
 
-    def start_transfer(self) -> None:
+    def start_transfer(self, *, wait_for_camera: bool = False) -> None:
         if self.worker and self.worker.is_alive():
             return
 
@@ -787,11 +790,36 @@ class ImportApp(tk.Tk):
         self.session_skipped = 0
         self._append_log("\n" + self.t("new_run"))
 
+        deadline = time.monotonic() + CAMERA_WAIT_SECONDS if wait_for_camera else None
         target = self._direct_worker if self.mode.get() == "direct" else self._ptpip_worker
-        self.worker = threading.Thread(target=target, args=(destination,), daemon=True)
+        self.worker = threading.Thread(target=target, args=(destination, deadline), daemon=True)
         self.worker.start()
 
-    def _direct_worker(self, destination: Path) -> None:
+    def _pause_before_camera_retry(self, deadline: float | None, attempt: int) -> bool:
+        """Wait before searching for the camera again.
+
+        Returns False when there is no wait window, it has run out, or the
+        user pressed Stop.  Explains the wait once in the log; afterwards
+        only the status line changes so the log stays readable.
+        """
+
+        if deadline is None or self.cancel_requested.is_set():
+            return False
+        remaining = deadline - time.monotonic()
+        if remaining <= CAMERA_RETRY_PAUSE_SECONDS:
+            self.events.put(
+                ("log", self.t("camera_wait_expired", minutes=CAMERA_WAIT_SECONDS // 60))
+            )
+            return False
+        if attempt == 1:
+            self.events.put(
+                ("log", self.t("camera_wait_log", minutes=CAMERA_WAIT_SECONDS // 60))
+            )
+        minutes_left = max(1, int(remaining + 59) // 60)
+        self.events.put(("status", self.t("camera_wait_status", minutes=minutes_left)))
+        return not self.cancel_requested.wait(CAMERA_RETRY_PAUSE_SECONDS)
+
+    def _direct_worker(self, destination: Path, deadline: float | None = None) -> None:
         client = SonySoapClient()
         downloaded = 0
         skipped = 0
@@ -799,7 +827,15 @@ class ImportApp(tk.Tk):
         success = False
         try:
             self.events.put(("log", self.t("looking_direct")))
-            descriptor = client.probe()
+            attempt = 0
+            while True:
+                attempt += 1
+                try:
+                    descriptor = client.probe()
+                    break
+                except TransportError:
+                    if not self._pause_before_camera_retry(deadline, attempt):
+                        raise
             self.events.put(("status", self.t("camera_found")))
             camera_name = descriptor.model_name or descriptor.friendly_name or "Sony"
             self.events.put(("log", self.t("camera_found_reading", camera=camera_name)))
@@ -847,7 +883,10 @@ class ImportApp(tk.Tk):
                     ("log", self.t("done_counts", downloaded=downloaded, skipped=skipped))
                 )
         except SonySoapError as exc:
-            self.events.put(("log", self.t("camera_error", error=exc)))
+            if self.cancel_requested.is_set():
+                self.events.put(("log", self.t("copy_stopped")))
+            else:
+                self.events.put(("log", self.t("camera_error", error=exc)))
         except Exception as exc:  # noqa: BLE001 - display actionable failure in beta UI
             self.events.put(("log", self.t("failed", error=exc)))
         finally:
@@ -865,7 +904,7 @@ class ImportApp(tk.Tk):
                 )
             )
 
-    def _ptpip_worker(self, destination: Path) -> None:
+    def _ptpip_worker(self, destination: Path, deadline: float | None = None) -> None:
         command = backend_command()
         if not command:
             self.events.put(("log", self.t("backend_missing")))
@@ -938,87 +977,119 @@ class ImportApp(tk.Tk):
                 ["--initcmdreq_guid", PAIRING_GUID, "--initcmdreq_hostname", "camera-transfer"]
             )
 
-        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        downloaded = 0
+        skipped = 0
+        success = False
+        shown_log_lines: set[str] = set()
+        attempt = 0
         try:
-            backend_environment = os.environ.copy()
-            backend_environment["CAMERA_WIFI_TRANSFER_GUI"] = "1"
-            self.backend_process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                bufsize=1,
-                creationflags=creation_flags,
-                env=backend_environment,
-            )
-            assert self.backend_process.stdout is not None
-            parser = BackendOutputParser()
-            current = 0
-            total = 0
-            downloaded = 0
-            skipped = 0
-            for raw_line in self.backend_process.stdout:
-                parsed = parser.parse(raw_line)
-                if parsed.storage_total is not None and parsed.storage_free is not None:
-                    self.events.put(
-                        (
-                            "storage",
-                            (parsed.storage_total, parsed.storage_free, parsed.storage_label or ""),
-                        )
-                    )
-                if parsed.total is not None:
-                    total = parsed.total
-                    if parsed.current is not None:
-                        current = parsed.current
-                    self.events.put(("overall", (current if parsed.item_done else max(0, current - 1), total)))
-                if parsed.filename is not None:
-                    if parsed.percent is None:
-                        status = self.t("downloading_file_no_percent", filename=parsed.filename)
-                    else:
-                        status = self.t(
-                            "downloading_file", filename=parsed.filename, percent=parsed.percent
-                        )
-                    self.events.put(("status", status))
-                    self.events.put(
-                        (
-                            "file_progress",
-                            (parsed.filename, parsed.percent or 0, current, total),
-                        )
-                    )
-                if parsed.item_done:
-                    if parsed.item_skipped:
-                        skipped += 1
-                    else:
-                        downloaded += 1
-                        self.events.put(("log", self.t("saved_file", filename=parsed.filename)))
-                    self.events.put(("overall", (current, total)))
-                if parsed.log_text:
-                    if parsed.filename is None:
-                        self.events.put(("log", self._friendly_backend_line(parsed.log_text)))
-                    if parsed.log_text.startswith("Found camera"):
-                        self.events.put(("status", self.t("camera_found")))
-            exit_code = self.backend_process.wait()
-            self.backend_process = None
-            success = exit_code == 0
-            if not success:
-                self.events.put(
-                    (
-                        "log",
-                        self.t("transfer_incomplete"),
-                    )
+            while True:
+                attempt += 1
+                exit_code, downloaded, skipped, total = self._run_backend_once(
+                    command, shown_log_lines
                 )
+                success = exit_code == 0
+                nothing_happened = not (downloaded or skipped or total)
+                if (
+                    success
+                    or exit_code != BACKEND_ERRNO_COULDNT_CONNECT
+                    or not nothing_happened
+                    or not self._pause_before_camera_retry(deadline, attempt)
+                ):
+                    break
+            if self.cancel_requested.is_set():
+                success = False
+            elif not success:
+                self.events.put(("log", self.t("transfer_incomplete")))
+        except OSError as exc:
+            self.events.put(("log", self.t("backend_start_failed", error=exc)))
+        finally:
+            self.backend_process = None
             self.events.put(
                 (
                     "done",
                     {"success": success, "downloaded": downloaded, "skipped": skipped},
                 )
             )
-        except OSError as exc:
-            self.backend_process = None
-            self.events.put(("log", self.t("backend_start_failed", error=exc)))
-            self.events.put(("done", {"success": False, "downloaded": 0, "skipped": 0}))
+
+    def _run_backend_once(
+        self, command: list[str], shown_log_lines: set[str]
+    ) -> tuple[int, int, int, int]:
+        """Run one airMTP session; return (exit code, downloaded, skipped, total).
+
+        ``shown_log_lines`` is shared across retries so repeated searches for
+        the camera do not print the same backend messages again.
+        """
+
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        backend_environment = os.environ.copy()
+        backend_environment["CAMERA_WIFI_TRANSFER_GUI"] = "1"
+        if self.cancel_requested.is_set():
+            return 1, 0, 0, 0
+        self.backend_process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+            creationflags=creation_flags,
+            env=backend_environment,
+        )
+        if self.cancel_requested.is_set():
+            # Stop was pressed while the process was being created.
+            self.backend_process.terminate()
+        assert self.backend_process.stdout is not None
+        parser = BackendOutputParser()
+        current = 0
+        total = 0
+        downloaded = 0
+        skipped = 0
+        for raw_line in self.backend_process.stdout:
+            parsed = parser.parse(raw_line)
+            if parsed.storage_total is not None and parsed.storage_free is not None:
+                self.events.put(
+                    (
+                        "storage",
+                        (parsed.storage_total, parsed.storage_free, parsed.storage_label or ""),
+                    )
+                )
+            if parsed.total is not None:
+                total = parsed.total
+                if parsed.current is not None:
+                    current = parsed.current
+                self.events.put(("overall", (current if parsed.item_done else max(0, current - 1), total)))
+            if parsed.filename is not None:
+                if parsed.percent is None:
+                    status = self.t("downloading_file_no_percent", filename=parsed.filename)
+                else:
+                    status = self.t(
+                        "downloading_file", filename=parsed.filename, percent=parsed.percent
+                    )
+                self.events.put(("status", status))
+                self.events.put(
+                    (
+                        "file_progress",
+                        (parsed.filename, parsed.percent or 0, current, total),
+                    )
+                )
+            if parsed.item_done:
+                if parsed.item_skipped:
+                    skipped += 1
+                else:
+                    downloaded += 1
+                    self.events.put(("log", self.t("saved_file", filename=parsed.filename)))
+                self.events.put(("overall", (current, total)))
+            if parsed.log_text:
+                if parsed.filename is None and parsed.log_text not in shown_log_lines:
+                    shown_log_lines.add(parsed.log_text)
+                    self.events.put(("log", self._friendly_backend_line(parsed.log_text)))
+                if parsed.log_text.startswith("Found camera"):
+                    self.events.put(("status", self.t("camera_found")))
+        exit_code = self.backend_process.wait()
+        self.backend_process = None
+        return exit_code, downloaded, skipped, total
 
     def _friendly_backend_line(self, line: str) -> str:
         replacements = (
@@ -1046,11 +1117,15 @@ class ImportApp(tk.Tk):
             parent=self,
         ):
             return
-        if self.backend_process and self.backend_process.poll() is None:
-            self.backend_process.terminate()
+        # Set the flag first so a worker that is waiting to retry the camera
+        # search stops instead of starting another attempt.
+        self.cancel_requested.set()
+        process = self.backend_process
+        if process and process.poll() is None:
+            process.terminate()
+        if self.mode.get() == "ptpip":
             self._append_log(self.t("stopped_network"))
         else:
-            self.cancel_requested.set()
             self._append_log(self.t("stopping_direct"))
 
     def _drain_events(self) -> None:
@@ -1240,7 +1315,7 @@ def main() -> int:
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--pair-helper", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--result-file", type=Path, help=argparse.SUPPRESS)
-    parser.add_argument("--language", choices=("auto", "ru", "en"), default=None)
+    parser.add_argument("--language", choices=("auto", *SUPPORTED_LANGUAGES), default=None)
     parser.add_argument("--demo", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.self_test:

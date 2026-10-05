@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $BuildRoot = Join-Path $ProjectRoot "build-output"
 $Artifacts = Join-Path $ProjectRoot "artifacts"
-$PackageName = "Camera-WiFi-Transfer-0.3.4-beta"
+$PackageName = "Camera-WiFi-Transfer-0.3.5-beta"
 $Package = Join-Path $BuildRoot $PackageName
 
 Push-Location $ProjectRoot
@@ -29,7 +29,7 @@ try {
     $SourcePackage = Join-Path $Package "source"
     New-Item -ItemType Directory -Path $SourcePackage -Force | Out-Null
     Copy-Item -LiteralPath app.py, backend_output.py, localization.py, sony_soap.py, windows_pairing.py -Destination $SourcePackage -Force
-    Copy-Item -LiteralPath tests, vendor, packaging, scripts -Destination $SourcePackage -Recurse -Force
+    Copy-Item -LiteralPath locales, tests, vendor, packaging, scripts -Destination $SourcePackage -Recurse -Force
     $PrivateBackendData = Join-Path $SourcePackage "vendor\airmtp\appdata"
     if (Test-Path -LiteralPath $PrivateBackendData) {
         Remove-Item -LiteralPath $PrivateBackendData -Recurse -Force

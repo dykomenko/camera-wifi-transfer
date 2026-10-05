@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.5-beta — 2026-10-05
+
+- When the transfer starts automatically, the app keeps looking for the camera for up to 5 minutes instead of giving up after about 20 seconds. The wait is explained once in the log, the status line counts down, and Stop ends it. A manual start still fails fast.
+- Added Belarusian, Ukrainian, Polish, German, French, Spanish, Italian, Portuguese, Simplified Chinese and Japanese. The language is picked from Windows automatically; the selector shows native language names.
+- Translations live in `locales/`, one module per language; a test checks that every language has the same keys and placeholders as English.
+- Fixed the USB pairing helper rejecting any `--language` other than Russian or English.
+
 ## 0.3.4-beta — 2026-10-05
 
 - The transfer now starts automatically when the app opens. Controlled by the new "Start downloading when the app opens" option (on by default).

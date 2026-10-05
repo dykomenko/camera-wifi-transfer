@@ -27,7 +27,7 @@ Camera companion apps are often slow, unreliable, or phone-first. Camera Wi-Fi T
 - Original JPEG/HEIF, common RAW formats, and video files
 - Sony direct-camera JPEG mode
 - Safe one-time USB pairing for older Sony cameras with a `PMHOME` service volume
-- Automatic Russian/English UI based on Windows, with a manual language selector
+- UI in English, Russian, Belarusian, Ukrainian, Polish, German, French, Spanish, Italian, Portuguese, Chinese and Japanese — picked from the Windows language, with a manual selector
 - User-controlled and persistent destination, file types, mode, and date folders
 - `.part` downloads and atomic completion; existing files are not overwritten
 - No photo deletion and no USB driver replacement
