@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.4-beta — 2026-10-05
+
+- The transfer now starts automatically when the app opens. Controlled by the new "Start downloading when the app opens" option (on by default).
+- The completion summary now checks that every file found on the camera was either downloaded or is already in the folder, and warns not to erase the card if any are missing.
+- The completion dialog offers to open the download folder.
+- The window title shows overall progress, so it is visible in the taskbar while minimized.
+- Fixed headings rendering at body-text size: a global font option was overriding the title and section styles.
+- Fixed mismatched label backgrounds inside the instruction and progress cards; aligned button heights.
+
 ## 0.3.3-beta — 2026-09-05
 
 - Fixed a bug (PTP/IP mode) where a photo could be silently marked "already downloaded" and skipped even though it was no longer in the destination folder — for example after it was manually deleted, moved, or backed up elsewhere. The backend kept its own persistent history of every filename it had ever transferred and trusted that ledger instead of checking the destination folder, which risked photos being erased from the camera without ever actually reaching the PC.

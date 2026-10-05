@@ -15,6 +15,7 @@ import uuid
 from pathlib import Path
 from tkinter import BOTH, END, LEFT, RIGHT, X, filedialog, messagebox
 import tkinter as tk
+from tkinter import font as tkfont
 from tkinter import ttk
 from typing import Any
 
@@ -25,7 +26,7 @@ from windows_pairing import PAIRING_CDB, PairingError, build_pairing_payload, pa
 
 
 APP_NAME = "Camera Wi-Fi Transfer"
-APP_VERSION = "0.3.3-beta"
+APP_VERSION = "0.3.4-beta"
 PAIRING_GUID = "0xa9fdb6005452ffff-0x3aa907283c52ffff"
 IMAGE_EXTENSIONS = ["JPG", "JPEG", "JPE", "HEIF", "HIF"]
 RAW_EXTENSIONS = [
@@ -240,6 +241,7 @@ class Settings:
         "pairing_profile": "helper",
         "language": "auto",
         "notify_on_complete": True,
+        "auto_start": True,
         "settings_version": SETTINGS_VERSION,
     }
 
@@ -407,8 +409,8 @@ class ImportApp(tk.Tk):
         self.t = Translator(self.language)
         self.language_choice = tk.StringVar()
         self.title(f"{self.t('app_title')}  {APP_VERSION}")
-        self.geometry("860x760")
-        self.minsize(780, 680)
+        self.geometry("860x800")
+        self.minsize(780, 720)
         self.destination = tk.StringVar(value=str(values["destination"]))
         self.mode = tk.StringVar(value=str(values["mode"]))
         self.camera_ip = tk.StringVar(value=str(values["camera_ip"]))
@@ -417,6 +419,7 @@ class ImportApp(tk.Tk):
         self.include_video = tk.BooleanVar(value=bool(values["include_video"]))
         self.organize_by_date = tk.BooleanVar(value=bool(values["organize_by_date"]))
         self.notify_on_complete = tk.BooleanVar(value=bool(values["notify_on_complete"]))
+        self.auto_start = tk.BooleanVar(value=bool(values["auto_start"]))
         self.pairing_profile = tk.StringVar(value=str(values["pairing_profile"]))
         self.status_text = tk.StringVar(value=self.t("ready"))
         self.detail_text = tk.StringVar(value=self.t("waiting_transfer"))
@@ -468,7 +471,12 @@ class ImportApp(tk.Tk):
             self.progress.configure(value=33)
             self._append_log(self.t("saved_file", filename="DSC01247.ARW"))
             self._append_log(self.t("downloading_file_no_percent", filename="DSC01248.ARW"))
-        self.after(100, self._drain_events)
+        if visible and not demo_mode and self.auto_start.get():
+            # The app is normally opened right after the camera starts
+            # "Send to Computer", so begin immediately.  The short delay lets
+            # the window appear first.
+            self.after(400, self._auto_start_transfer)
+        self._drain_after_id: str | None = self.after(100, self._drain_events)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _configure_styles(self) -> None:
@@ -477,20 +485,26 @@ class ImportApp(tk.Tk):
             style.theme_use("vista")
         except tk.TclError:
             pass
-        # Tcl parses a font description as a list.  A family containing a
-        # space must be grouped, otherwise it treats "UI" as the point size.
-        self.option_add("*Font", "{Segoe UI} 10")
+        # Set the base font through Tk's named fonts.  A global "*Font" option
+        # would be copied into every ttk widget's own -font and silently
+        # override the heading styles below.
+        for name in ("TkDefaultFont", "TkTextFont"):
+            tkfont.nametofont(name, root=self).configure(family="Segoe UI", size=10)
+        card = "#f6f8fb"
         style.configure("Title.TLabel", font=("Segoe UI Semibold", 22), foreground="#152238")
         style.configure("DialogTitle.TLabel", font=("Segoe UI Semibold", 17), foreground="#152238")
         style.configure("Section.TLabel", font=("Segoe UI Semibold", 11), foreground="#152238")
         style.configure("Muted.TLabel", foreground="#5d6878")
-        style.configure("Hint.TLabel", foreground="#335d92")
+        style.configure("Hint.TLabel", foreground="#335d92", background=card)
+        style.configure("CardMuted.TLabel", foreground="#5d6878", background=card)
         style.configure("Accent.TButton", font=("Segoe UI Semibold", 10), padding=(16, 9))
         style.configure("Secondary.TButton", padding=(13, 9))
-        style.configure("Card.TFrame", background="#f6f8fb")
+        style.configure("Card.TFrame", background=card)
         style.configure("Warning.TFrame", background="#fff4df")
         style.configure("Warning.TLabel", background="#fff4df", foreground="#6b4815")
-        style.configure("Status.TLabel", font=("Segoe UI Semibold", 10), foreground="#1f6b45")
+        style.configure(
+            "Status.TLabel", font=("Segoe UI Semibold", 10), foreground="#1f6b45", background=card
+        )
         style.configure("Transfer.Horizontal.TProgressbar", thickness=11)
 
     def _build_ui(self) -> None:
@@ -561,7 +575,7 @@ class ImportApp(tk.Tk):
         ttk.Label(camera_ip_row, text=self.t("camera_ip"), style="Hint.TLabel").pack(side=LEFT)
         self.camera_ip_entry = ttk.Entry(camera_ip_row, textvariable=self.camera_ip, width=18)
         self.camera_ip_entry.pack(side=LEFT, padx=(10, 8))
-        ttk.Label(camera_ip_row, text=self.t("camera_ip_hint"), style="Muted.TLabel").pack(side=LEFT)
+        ttk.Label(camera_ip_row, text=self.t("camera_ip_hint"), style="CardMuted.TLabel").pack(side=LEFT)
 
         ttk.Label(outer, text=self.t("destination"), style="Section.TLabel").pack(anchor="w")
         destination_row = ttk.Frame(outer)
@@ -571,7 +585,7 @@ class ImportApp(tk.Tk):
         ttk.Button(destination_row, text=self.t("open"), command=self.open_destination).pack(side=LEFT, padx=(6, 0))
 
         self.options_frame = ttk.Frame(outer)
-        self.options_frame.pack(fill=X, pady=(0, 14))
+        self.options_frame.pack(fill=X, pady=(0, 6))
         self.jpeg_check = ttk.Checkbutton(self.options_frame, text=self.t("jpeg_heif"), variable=self.include_jpeg)
         self.jpeg_check.pack(side=LEFT)
         self.raw_check = ttk.Checkbutton(self.options_frame, text=self.t("raw"), variable=self.include_raw)
@@ -580,8 +594,18 @@ class ImportApp(tk.Tk):
         self.video_check.pack(side=LEFT, padx=(16, 0))
         self.date_check = ttk.Checkbutton(self.options_frame, text=self.t("date_folders"), variable=self.organize_by_date)
         self.date_check.pack(side=LEFT, padx=(22, 0))
+
+        behavior_row = ttk.Frame(outer)
+        behavior_row.pack(fill=X, pady=(0, 14))
+        self.auto_start_check = ttk.Checkbutton(
+            behavior_row,
+            text=self.t("auto_start"),
+            variable=self.auto_start,
+            command=self.save_settings,
+        )
+        self.auto_start_check.pack(side=LEFT)
         self.notify_check = ttk.Checkbutton(
-            self.options_frame,
+            behavior_row,
             text=self.t("notify_complete"),
             variable=self.notify_on_complete,
             command=self.save_settings,
@@ -597,22 +621,30 @@ class ImportApp(tk.Tk):
             command=self.start_transfer,
         )
         self.start_button.pack(side=LEFT)
-        self.stop_button = ttk.Button(action_row, text=self.t("stop"), command=self.stop_transfer, state="disabled")
+        self.stop_button = ttk.Button(
+            action_row,
+            text=self.t("stop"),
+            style="Secondary.TButton",
+            command=self.stop_transfer,
+            state="disabled",
+        )
         self.stop_button.pack(side=LEFT, padx=(8, 0))
-        ttk.Button(action_row, text=self.t("sony_pairing"), command=self.open_setup).pack(side=RIGHT)
+        ttk.Button(
+            action_row, text=self.t("sony_pairing"), style="Secondary.TButton", command=self.open_setup
+        ).pack(side=RIGHT)
 
         progress_card = ttk.Frame(outer, style="Card.TFrame", padding=(14, 11))
         progress_card.pack(fill=X)
         status_row = ttk.Frame(progress_card, style="Card.TFrame")
         status_row.pack(fill=X)
         ttk.Label(status_row, textvariable=self.status_text, style="Status.TLabel").pack(side=LEFT)
-        ttk.Label(status_row, textvariable=self.storage_text, style="Muted.TLabel").pack(side=RIGHT)
+        ttk.Label(status_row, textvariable=self.storage_text, style="CardMuted.TLabel").pack(side=RIGHT)
         detail_row = ttk.Frame(progress_card, style="Card.TFrame")
         detail_row.pack(fill=X, pady=(8, 0))
         ttk.Label(
             detail_row,
             textvariable=self.detail_text,
-            style="Muted.TLabel",
+            style="CardMuted.TLabel",
             width=68,
             anchor="w",
         ).pack(side=LEFT, fill=X, expand=True)
@@ -705,10 +737,20 @@ class ImportApp(tk.Tk):
                 "include_video": self.include_video.get(),
                 "organize_by_date": self.organize_by_date.get(),
                 "notify_on_complete": self.notify_on_complete.get(),
+                "auto_start": self.auto_start.get(),
                 "pairing_profile": self.pairing_profile.get(),
                 "language": self.language_preference.get(),
             }
         )
+
+    def _auto_start_transfer(self) -> None:
+        self._append_log(self.t("auto_start_log"))
+        self.start_transfer()
+
+    def _set_title_progress(self, percent: int | None) -> None:
+        # The title doubles as a taskbar progress readout while minimized.
+        base = f"{self.t('app_title')}  {APP_VERSION}"
+        self.title(base if percent is None else f"{percent}% · {base}")
 
     def start_transfer(self) -> None:
         if self.worker and self.worker.is_alive():
@@ -1026,6 +1068,7 @@ class ImportApp(tk.Tk):
                     self.progress.stop()
                     percent = int(self.overall_current * 100 / self.overall_total) if self.overall_total else 0
                     self.progress.configure(mode="determinate", value=percent)
+                    self._set_title_progress(percent)
                 elif event == "file_progress":
                     filename, percent, current, total = payload
                     self.current_file_percent = int(percent)
@@ -1061,7 +1104,13 @@ class ImportApp(tk.Tk):
                     self._finish_transfer(payload)
         except queue.Empty:
             pass
-        self.after(100, self._drain_events)
+        self._drain_after_id = self.after(100, self._drain_events)
+
+    def destroy(self) -> None:
+        if self._drain_after_id is not None:
+            self.after_cancel(self._drain_after_id)
+            self._drain_after_id = None
+        super().destroy()
 
     def _append_log(self, line: str) -> None:
         cleaned = clean_backend_text(line)
@@ -1092,24 +1141,44 @@ class ImportApp(tk.Tk):
             skipped = 0
         self.progress.stop()
         self.progress.configure(mode="determinate", value=100 if success else 0)
+        self._set_title_progress(None)
         self.start_button.configure(state="normal")
         self.stop_button.configure(state="disabled")
         if success:
-            self.status_text.set(self.t("transfer_complete"))
+            total = self.overall_total
+            # Before the card is wiped the user needs to know that every
+            # camera file was either copied now or is already in the folder.
+            if total and downloaded + skipped < total:
+                coverage = self.t(
+                    "coverage_incomplete", handled=downloaded + skipped, total=total
+                )
+                headline = self.t("needs_attention")
+            else:
+                coverage = self.t("coverage_complete", total=total) if total else ""
+                headline = self.t("transfer_complete")
+            self.status_text.set(headline)
             self.detail_text.set(
                 self.t("done_counts", downloaded=downloaded, skipped=skipped)
             )
+            if coverage:
+                self._append_log(coverage)
             if self.notify_on_complete.get() and not self.demo_mode:
-                messagebox.showinfo(
-                    self.t("transfer_complete"),
-                    self.t(
-                        "completion_message",
-                        downloaded=downloaded,
-                        skipped=skipped,
-                        folder=self.destination.get(),
-                    ),
-                    parent=self,
+                message = self.t(
+                    "completion_message",
+                    downloaded=downloaded,
+                    skipped=skipped,
+                    folder=self.destination.get(),
                 )
+                if coverage:
+                    message += "\n\n" + coverage
+                self.deiconify()
+                self.lift()
+                if messagebox.askyesno(
+                    headline,
+                    message + "\n\n" + self.t("open_folder_question"),
+                    parent=self,
+                ):
+                    self.open_destination()
         else:
             self.status_text.set(self.t("needs_attention"))
             self.detail_text.set(self.t("transfer_not_completed"))

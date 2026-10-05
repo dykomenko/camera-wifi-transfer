@@ -45,6 +45,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "waiting_transfer": "Choose what to download",
         "preparing_transfer": "Reading the camera and preparing the transfer…",
         "notify_complete": "Notify when done",
+        "auto_start": "Start downloading when the app opens",
+        "auto_start_log": "Starting automatically (can be turned off below the folder).",
+        "coverage_complete": "All {total} files from the camera are in the folder.",
+        "coverage_incomplete": (
+            "Warning: only {handled} of {total} camera files were handled. "
+            "Do not erase the card — run the transfer again."
+        ),
+        "open_folder_question": "Open the folder?",
         "transfer_complete": "Transfer complete",
         "transfer_not_completed": "The transfer did not complete. See the log below.",
         "completion_message": (
@@ -172,6 +180,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "waiting_transfer": "Выберите, что скачать",
         "preparing_transfer": "Читаю камеру и готовлю передачу…",
         "notify_complete": "Сообщить о завершении",
+        "auto_start": "Начинать скачивание сразу при запуске",
+        "auto_start_log": "Автозапуск скачивания (отключается галочкой под папкой).",
+        "coverage_complete": "Все {total} файлов с камеры есть в папке.",
+        "coverage_incomplete": (
+            "Внимание: обработано только {handled} из {total} файлов камеры. "
+            "Не очищайте карту — запустите скачивание ещё раз."
+        ),
+        "open_folder_question": "Открыть папку?",
         "transfer_complete": "Копирование завершено",
         "transfer_not_completed": "Копирование не завершено. Подробности — в журнале ниже.",
         "completion_message": (
