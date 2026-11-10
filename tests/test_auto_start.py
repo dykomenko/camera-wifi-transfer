@@ -163,6 +163,54 @@ class CameraWaitTests(unittest.TestCase):
         self.assertEqual(run.call_count, 1)
         self.assertFalse(done[1]["success"])
 
+    def test_broken_transfer_reconnects_and_counts_each_file_once(self) -> None:
+        # 3 of 10 files arrive, Wi-Fi drops; the stuck camera ignores one
+        # session; after Cancel on the camera the rest is copied and the
+        # 3 earlier files are found in the folder.
+        timed_out = 10060
+        run, events, done = self._run_network(
+            [
+                (timed_out, 3, 1, 10),
+                (timed_out, 0, 0, 0),
+                (0, 6, 4, 10),
+            ],
+            None,  # also for a manual start
+        )
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(done, ("done", {"success": True, "downloaded": 9, "skipped": 1}))
+        lost = [line for line in self._logs(events) if "connection to the camera was lost" in line]
+        self.assertEqual(len(lost), 1)
+
+    def test_local_file_errors_are_not_retried(self) -> None:
+        run, _events, done = self._run_network([(5006, 2, 0, 10)], None)
+        self.assertEqual(run.call_count, 1)
+        self.assertFalse(done[1]["success"])
+
+    def test_reconnect_wait_gives_up_eventually(self) -> None:
+        with mock.patch.object(app, "CAMERA_WAIT_SECONDS", 0):
+            run, events, done = self._run_network([(10060, 3, 0, 10)], None)
+        self.assertEqual(run.call_count, 1)
+        self.assertFalse(done[1]["success"])
+        self.assertEqual(done[1]["downloaded"], 3)
+
+    def test_airmtp_sony_advice_is_replaced(self) -> None:
+        lines = [
+            "Found camera at IP address 192.168.2.50\n",
+            "\n",
+            "Before running airmtp again please press 'Cancel' on your Sony camera's\n",
+            "'Send to Computer' screen and select 'Send to Computer' again. Failing to\n",
+            "do this will cause the next airmtp session to not negotiate successfully.\n",
+            "Number of attempts (1) has reached maximum configured value - exiting\n",
+        ]
+        process = mock.Mock(stdout=iter(lines))
+        process.wait.return_value = 10060
+        with mock.patch.object(app.subprocess, "Popen", return_value=process):
+            self.window._run_backend_once(["backend"], set())
+        logs = " ".join(self._logs(self._events()))
+        self.assertIn("192.168.2.50", logs)
+        self.assertNotIn("airmtp", logs)
+        self.assertNotIn("Number of attempts", logs)
+
     def test_direct_mode_retries_until_the_camera_appears(self) -> None:
         client = mock.Mock()
         client.probe.side_effect = [

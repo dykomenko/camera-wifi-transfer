@@ -27,7 +27,7 @@ from windows_pairing import PAIRING_CDB, PairingError, build_pairing_payload, pa
 
 
 APP_NAME = "Camera Wi-Fi Transfer"
-APP_VERSION = "0.3.5-beta"
+APP_VERSION = "0.3.6-beta"
 PAIRING_GUID = "0xa9fdb6005452ffff-0x3aa907283c52ffff"
 IMAGE_EXTENSIONS = ["JPG", "JPEG", "JPE", "HEIF", "HIF"]
 RAW_EXTENSIONS = [
@@ -42,6 +42,17 @@ CAMERA_WAIT_SECONDS = 5 * 60
 CAMERA_RETRY_PAUSE_SECONDS = 5
 # airMTP exit code for "camera not found / could not connect".
 BACKEND_ERRNO_COULDNT_CONNECT = 4004
+# airMTP exits with codes in this range for problems a retry cannot fix
+# (bad arguments, local file errors, ...).
+BACKEND_ERRNO_DONT_RETRY = range(5000, 5100)
+# airMTP's advice after a broken Sony session, replaced in the GUI by a
+# localized message that also says the app will continue by itself.
+BACKEND_NOISE_PREFIXES = (
+    "Before running airmtp again",
+    "'Send to Computer' screen and select",
+    "do this will cause the next airmtp session",
+    "Number of attempts (",
+)
 
 
 def executable_dir() -> Path:
@@ -795,12 +806,20 @@ class ImportApp(tk.Tk):
         self.worker = threading.Thread(target=target, args=(destination, deadline), daemon=True)
         self.worker.start()
 
-    def _pause_before_camera_retry(self, deadline: float | None, attempt: int) -> bool:
+    def _pause_before_camera_retry(
+        self,
+        deadline: float | None,
+        attempt: int,
+        *,
+        log_key: str = "camera_wait_log",
+        status_key: str = "camera_wait_status",
+    ) -> bool:
         """Wait before searching for the camera again.
 
         Returns False when there is no wait window, it has run out, or the
-        user pressed Stop.  Explains the wait once in the log; afterwards
-        only the status line changes so the log stays readable.
+        user pressed Stop.  Explains the wait once in the log (``attempt``
+        1); afterwards only the status line changes so the log stays
+        readable.
         """
 
         if deadline is None or self.cancel_requested.is_set():
@@ -812,11 +831,9 @@ class ImportApp(tk.Tk):
             )
             return False
         if attempt == 1:
-            self.events.put(
-                ("log", self.t("camera_wait_log", minutes=CAMERA_WAIT_SECONDS // 60))
-            )
+            self.events.put(("log", self.t(log_key, minutes=CAMERA_WAIT_SECONDS // 60)))
         minutes_left = max(1, int(remaining + 59) // 60)
-        self.events.put(("status", self.t("camera_wait_status", minutes=minutes_left)))
+        self.events.put(("status", self.t(status_key, minutes=minutes_left)))
         return not self.cancel_requested.wait(CAMERA_RETRY_PAUSE_SECONDS)
 
     def _direct_worker(self, destination: Path, deadline: float | None = None) -> None:
@@ -943,6 +960,10 @@ class ImportApp(tk.Tk):
                 "ignore",
                 "--transferorder",
                 "newestfirst",
+                # Wi-Fi can stall for several seconds; the airMTP default
+                # of 5 s aborted whole transfers on a single hiccup.
+                "--socketreadwritetimeout",
+                "20",
                 "--retrycount",
                 "1",
                 "--ssdp_discoveryattempts",
@@ -982,19 +1003,46 @@ class ImportApp(tk.Tk):
         success = False
         shown_log_lines: set[str] = set()
         attempt = 0
+        # Files downloaded by earlier, interrupted attempts.  A later attempt
+        # finds them in the folder and reports them as skipped, so they are
+        # moved back from "skipped" to "downloaded" in the totals.
+        earlier_downloads = 0
+        reconnect_deadline: float | None = None
+        reconnect_attempt = 0
         try:
             while True:
                 attempt += 1
-                exit_code, downloaded, skipped, total = self._run_backend_once(
+                exit_code, run_downloaded, run_skipped, total = self._run_backend_once(
                     command, shown_log_lines
                 )
+                downloaded = earlier_downloads + run_downloaded
+                skipped = max(0, run_skipped - earlier_downloads)
                 success = exit_code == 0
-                nothing_happened = not (downloaded or skipped or total)
-                if (
-                    success
-                    or exit_code != BACKEND_ERRNO_COULDNT_CONNECT
-                    or not nothing_happened
-                    or not self._pause_before_camera_retry(deadline, attempt)
+                if success or self.cancel_requested.is_set():
+                    break
+                if exit_code in BACKEND_ERRNO_DONT_RETRY:
+                    break
+                earlier_downloads = downloaded
+                if run_downloaded or run_skipped or total or reconnect_deadline is not None:
+                    # The camera was reached, then the connection broke (for
+                    # example a Wi-Fi drop in the middle of a file).  A Sony
+                    # camera then stays on its "Send to Computer" screen and
+                    # ignores new sessions until Cancel is pressed on it, so
+                    # tell the user and keep reconnecting; files that already
+                    # reached the folder are skipped by the next session.
+                    if run_downloaded or reconnect_deadline is None:
+                        reconnect_deadline = time.monotonic() + CAMERA_WAIT_SECONDS
+                        reconnect_attempt = 0
+                    reconnect_attempt += 1
+                    if not self._pause_before_camera_retry(
+                        reconnect_deadline,
+                        reconnect_attempt,
+                        log_key="connection_lost_log",
+                        status_key="reconnect_wait_status",
+                    ):
+                        break
+                elif exit_code != BACKEND_ERRNO_COULDNT_CONNECT or not (
+                    self._pause_before_camera_retry(deadline, attempt)
                 ):
                     break
             if self.cancel_requested.is_set():
@@ -1082,6 +1130,8 @@ class ImportApp(tk.Tk):
                     self.events.put(("log", self.t("saved_file", filename=parsed.filename)))
                 self.events.put(("overall", (current, total)))
             if parsed.log_text:
+                if parsed.log_text.lstrip().startswith(BACKEND_NOISE_PREFIXES):
+                    continue
                 if parsed.filename is None and parsed.log_text not in shown_log_lines:
                     shown_log_lines.add(parsed.log_text)
                     self.events.put(("log", self._friendly_backend_line(parsed.log_text)))

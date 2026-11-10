@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.6-beta — 2026-11-11
+
+- A Wi-Fi drop in the middle of a transfer no longer ends the run. The app explains (in the UI language) to press Cancel on the camera and choose Send to Computer again, then keeps reconnecting for up to 5 minutes and continues by itself; files already in the folder are not downloaded again and are counted once.
+- The network read timeout is raised from 5 to 20 seconds, so short Wi-Fi stalls do not break the connection at all.
+- airMTP's English "Before running airmtp again…" advice is hidden in favour of the localized message.
+
 ## 0.3.5-beta — 2026-10-05
 
 - When the transfer starts automatically, the app keeps looking for the camera for up to 5 minutes instead of giving up after about 20 seconds. The wait is explained once in the log, the status line counts down, and Stop ends it. A manual start still fails fast.

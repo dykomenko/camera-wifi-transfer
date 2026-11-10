@@ -73,6 +73,8 @@ MESSAGES: dict[str, str] = {
     "camera_wait_log": "Aparat jeszcze nie został znaleziony. Będę szukać do {minutes} minut — włącz w aparacie „Wyślij do komputera” / PC transfer.",
     "camera_wait_status": "Czekam na aparat… zostało ok. {minutes} min",
     "camera_wait_expired": "Nie znaleziono aparatu w ciągu {minutes} min. Kliknij „Pobierz nowe pliki”, gdy będzie gotowy.",
+    "connection_lost_log": "Połączenie z aparatem zostało przerwane. Naciśnij Cancel w aparacie i ponownie wybierz „Wyślij do komputera” — przesyłanie wznowi się samo (czekam do {minutes} min). Już zapisane pliki nie będą pobierane ponownie.",
+    "reconnect_wait_status": "Czekam na ponowne połączenie aparatu… zostało ok. {minutes} min",
     "files_downloaded": "plików pobrano",
     "files_skipped": "wcześniej pobranych plików pominięto",
     "files_skipped_existing": "plików pominięto, ponieważ są już w folderze docelowym",

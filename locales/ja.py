@@ -73,6 +73,8 @@ MESSAGES: dict[str, str] = {
     "camera_wait_log": "カメラがまだ見つかりません。最大 {minutes} 分間探し続けます — カメラで「PCに保存」/ PC transfer を有効にしてください。",
     "camera_wait_status": "カメラを待っています… 残り約 {minutes} 分",
     "camera_wait_expired": "{minutes} 分以内にカメラが見つかりませんでした。準備ができたら「新しいファイルを取り込む」をクリックしてください。",
+    "connection_lost_log": "カメラとの接続が切れました。カメラで Cancel を押し、もう一度「PCに保存」を選んでください — 転送は自動的に再開します（最大 {minutes} 分待機）。保存済みのファイルは再度取り込みません。",
+    "reconnect_wait_status": "カメラの再接続を待っています… 残り約 {minutes} 分",
     "files_downloaded": "ファイルを取り込みました",
     "files_skipped": "以前に取り込んだファイルをスキップしました",
     "files_skipped_existing": "ファイルは保存先フォルダーに既にあるためスキップしました",

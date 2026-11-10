@@ -73,6 +73,8 @@ MESSAGES: dict[str, str] = {
     "camera_wait_log": "Appareil pas encore trouvé. Je continue à chercher jusqu'à {minutes} minutes — activez « Envoyer vers l'ordinateur » / PC transfer sur l'appareil.",
     "camera_wait_status": "En attente de l'appareil… environ {minutes} min restantes",
     "camera_wait_expired": "Appareil introuvable en {minutes} min. Cliquez sur « Télécharger les nouveaux » quand il est prêt.",
+    "connection_lost_log": "La connexion avec l'appareil a été perdue. Appuyez sur Cancel sur l'appareil, puis choisissez à nouveau « Envoyer vers l'ordinateur » — le transfert reprendra tout seul (attente jusqu'à {minutes} min). Les fichiers déjà enregistrés ne seront pas retéléchargés.",
+    "reconnect_wait_status": "En attente de reconnexion de l'appareil… environ {minutes} min restantes",
     "files_downloaded": "fichiers téléchargés",
     "files_skipped": "fichiers déjà téléchargés ignorés",
     "files_skipped_existing": "fichiers ignorés car déjà présents dans le dossier de destination",

@@ -73,6 +73,8 @@ MESSAGES: dict[str, str] = {
     "camera_wait_log": "La cámara aún no aparece. Seguiré buscando hasta {minutes} minutos — active en la cámara «Enviar a ordenador» / PC transfer.",
     "camera_wait_status": "Esperando la cámara… quedan unos {minutes} min",
     "camera_wait_expired": "No se encontró la cámara en {minutes} min. Pulse «Descargar nuevos» cuando esté lista.",
+    "connection_lost_log": "Se perdió la conexión con la cámara. Pulse Cancel en la cámara y vuelva a elegir «Enviar a ordenador»: la transferencia continuará sola (espero hasta {minutes} min). Los archivos ya guardados no se volverán a descargar.",
+    "reconnect_wait_status": "Esperando a que la cámara se reconecte… quedan unos {minutes} min",
     "files_downloaded": "archivos descargados",
     "files_skipped": "archivos descargados anteriormente omitidos",
     "files_skipped_existing": "archivos omitidos porque ya estaban en la carpeta de destino",

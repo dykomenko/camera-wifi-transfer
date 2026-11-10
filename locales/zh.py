@@ -73,6 +73,8 @@ MESSAGES: dict[str, str] = {
     "camera_wait_log": "暂未找到相机。将继续查找最多 {minutes} 分钟 — 请在相机上启用“发送到计算机” / PC transfer。",
     "camera_wait_status": "正在等待相机… 剩余约 {minutes} 分钟",
     "camera_wait_expired": "{minutes} 分钟内未找到相机。相机就绪后请点击“下载新文件”。",
+    "connection_lost_log": "与相机的连接已中断。请在相机上按 Cancel，然后重新选择“发送到计算机”— 传输会自动继续（最多等待 {minutes} 分钟）。已保存的文件不会重复下载。",
+    "reconnect_wait_status": "正在等待相机重新连接… 剩余约 {minutes} 分钟",
     "files_downloaded": "个文件已下载",
     "files_skipped": "个先前下载的文件已跳过",
     "files_skipped_existing": "个文件已跳过，因为目标文件夹中已存在",

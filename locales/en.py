@@ -73,6 +73,8 @@ MESSAGES: dict[str, str] = {
     "camera_wait_log": "Camera not found yet. I'll keep looking for up to {minutes} minutes — turn on Send to Computer / PC transfer on the camera.",
     "camera_wait_status": "Waiting for the camera… about {minutes} min left",
     "camera_wait_expired": "The camera was not found within {minutes} min. Click Download new files when it is ready.",
+    "connection_lost_log": "The connection to the camera was lost. On the camera press Cancel, then choose Send to Computer again — the transfer will continue by itself (waiting up to {minutes} min). Files already saved will not be downloaded again.",
+    "reconnect_wait_status": "Waiting for the camera to reconnect… about {minutes} min left",
     "files_downloaded": "files downloaded",
     "files_skipped": "previously downloaded files skipped",
     "files_skipped_existing": "files skipped because they already existed in the destination folder",
