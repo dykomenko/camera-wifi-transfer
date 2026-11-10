@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.7-beta — 2026-11-11
+
+- Hide airMTP's start-up banner (`airmtp v…` and `Time: …, Py: …, OS: …`). It was printed again on every reconnect attempt, filling the log with one line every ~25 seconds while the app waited for the camera.
+
 ## 0.3.6-beta — 2026-11-11
 
 - A Wi-Fi drop in the middle of a transfer no longer ends the run. The app explains (in the UI language) to press Cancel on the camera and choose Send to Computer again, then keeps reconnecting for up to 5 minutes and continues by itself; files already in the folder are not downloaded again and are counted once.

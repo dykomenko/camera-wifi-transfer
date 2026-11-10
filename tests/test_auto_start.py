@@ -195,6 +195,9 @@ class CameraWaitTests(unittest.TestCase):
 
     def test_airmtp_sony_advice_is_replaced(self) -> None:
         lines = [
+            "\n",
+            "airmtp v1.1 - MTP network transfer of images/movies for cameras [GPL v3]\n",
+            "Time: 11/11/26 00:16:13, Py: 3.10.6, OS: Windows\n",
             "Found camera at IP address 192.168.2.50\n",
             "\n",
             "Before running airmtp again please press 'Cancel' on your Sony camera's\n",
@@ -210,6 +213,7 @@ class CameraWaitTests(unittest.TestCase):
         self.assertIn("192.168.2.50", logs)
         self.assertNotIn("airmtp", logs)
         self.assertNotIn("Number of attempts", logs)
+        self.assertNotIn("Py: 3.10.6", logs)
 
     def test_direct_mode_retries_until_the_camera_appears(self) -> None:
         client = mock.Mock()

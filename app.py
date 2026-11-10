@@ -27,7 +27,7 @@ from windows_pairing import PAIRING_CDB, PairingError, build_pairing_payload, pa
 
 
 APP_NAME = "Camera Wi-Fi Transfer"
-APP_VERSION = "0.3.6-beta"
+APP_VERSION = "0.3.7-beta"
 PAIRING_GUID = "0xa9fdb6005452ffff-0x3aa907283c52ffff"
 IMAGE_EXTENSIONS = ["JPG", "JPEG", "JPE", "HEIF", "HIF"]
 RAW_EXTENSIONS = [
@@ -45,9 +45,13 @@ BACKEND_ERRNO_COULDNT_CONNECT = 4004
 # airMTP exits with codes in this range for problems a retry cannot fix
 # (bad arguments, local file errors, ...).
 BACKEND_ERRNO_DONT_RETRY = range(5000, 5100)
-# airMTP's advice after a broken Sony session, replaced in the GUI by a
-# localized message that also says the app will continue by itself.
+# airMTP lines hidden in the GUI: its start-up banner (printed again on
+# every reconnect, with a new time stamp each time) and its advice after a
+# broken Sony session, which the GUI replaces with a localized message
+# that also says the app will continue by itself.
 BACKEND_NOISE_PREFIXES = (
+    "airmtp v",
+    "Time: ",
     "Before running airmtp again",
     "'Send to Computer' screen and select",
     "do this will cause the next airmtp session",
