@@ -27,7 +27,7 @@ from windows_pairing import PAIRING_CDB, PairingError, build_pairing_payload, pa
 
 
 APP_NAME = "Camera Wi-Fi Transfer"
-APP_VERSION = "0.3.7-beta"
+APP_VERSION = "0.3.8-beta"
 PAIRING_GUID = "0xa9fdb6005452ffff-0x3aa907283c52ffff"
 IMAGE_EXTENSIONS = ["JPG", "JPEG", "JPE", "HEIF", "HIF"]
 RAW_EXTENSIONS = [
@@ -817,6 +817,7 @@ class ImportApp(tk.Tk):
         *,
         log_key: str = "camera_wait_log",
         status_key: str = "camera_wait_status",
+        expired_key: str = "camera_wait_expired",
     ) -> bool:
         """Wait before searching for the camera again.
 
@@ -830,12 +831,12 @@ class ImportApp(tk.Tk):
             return False
         remaining = deadline - time.monotonic()
         if remaining <= CAMERA_RETRY_PAUSE_SECONDS:
-            self.events.put(
-                ("log", self.t("camera_wait_expired", minutes=CAMERA_WAIT_SECONDS // 60))
-            )
+            self.events.put(("log", self.t(expired_key, minutes=CAMERA_WAIT_SECONDS // 60)))
             return False
         if attempt == 1:
             self.events.put(("log", self.t(log_key, minutes=CAMERA_WAIT_SECONDS // 60)))
+            # The user has to act on the camera, so bring the window up.
+            self.events.put(("attention", None))
         minutes_left = max(1, int(remaining + 59) // 60)
         self.events.put(("status", self.t(status_key, minutes=minutes_left)))
         return not self.cancel_requested.wait(CAMERA_RETRY_PAUSE_SECONDS)
@@ -1013,6 +1014,7 @@ class ImportApp(tk.Tk):
         earlier_downloads = 0
         reconnect_deadline: float | None = None
         reconnect_attempt = 0
+        gave_up_reconnecting = False
         try:
             while True:
                 attempt += 1
@@ -1043,7 +1045,9 @@ class ImportApp(tk.Tk):
                         reconnect_attempt,
                         log_key="connection_lost_log",
                         status_key="reconnect_wait_status",
+                        expired_key="reconnect_expired",
                     ):
+                        gave_up_reconnecting = not self.cancel_requested.is_set()
                         break
                 elif exit_code != BACKEND_ERRNO_COULDNT_CONNECT or not (
                     self._pause_before_camera_retry(deadline, attempt)
@@ -1051,7 +1055,8 @@ class ImportApp(tk.Tk):
                     break
             if self.cancel_requested.is_set():
                 success = False
-            elif not success:
+            elif not success and not gave_up_reconnecting:
+                # reconnect_expired already told the user what to do.
                 self.events.put(("log", self.t("transfer_incomplete")))
         except OSError as exc:
             self.events.put(("log", self.t("backend_start_failed", error=exc)))
@@ -1229,6 +1234,10 @@ class ImportApp(tk.Tk):
                             percent=free_percent,
                         )
                     )
+                elif event == "attention":
+                    self.deiconify()
+                    self.lift()
+                    self.bell()
                 elif event == "done":
                     self._finish_transfer(payload)
         except queue.Empty:
@@ -1311,6 +1320,8 @@ class ImportApp(tk.Tk):
         else:
             self.status_text.set(self.t("needs_attention"))
             self.detail_text.set(self.t("transfer_not_completed"))
+            if downloaded:
+                self._append_log(self.t("partial_counts", downloaded=downloaded))
 
     def _on_close(self) -> None:
         if self.worker and self.worker.is_alive():

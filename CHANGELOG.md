@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.8-beta — 2026-11-11
+
+- While waiting for the camera to reconnect after a drop, the status line itself now says what to do on the camera (Cancel → Send to Computer), and the window is brought to the front with a beep when the connection is lost.
+- If the camera does not come back within 5 minutes, the message now says it did not reconnect (not "camera not found") and lists the steps; the duplicate "Transfer did not finish" line is gone.
+- An interrupted run reports how many files were saved before the drop.
+
 ## 0.3.7-beta — 2026-11-11
 
 - Hide airMTP's start-up banner (`airmtp v…` and `Time: …, Py: …, OS: …`). It was printed again on every reconnect attempt, filling the log with one line every ~25 seconds while the app waited for the camera.

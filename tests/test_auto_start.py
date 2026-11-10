@@ -192,6 +192,18 @@ class CameraWaitTests(unittest.TestCase):
         self.assertEqual(run.call_count, 1)
         self.assertFalse(done[1]["success"])
         self.assertEqual(done[1]["downloaded"], 3)
+        logs = self._logs(events)
+        self.assertTrue(any("did not reconnect" in line for line in logs))
+        self.assertFalse(any("not found within" in line for line in logs))
+        self.assertFalse(any("Transfer did not finish" in line for line in logs))
+
+    def test_connection_loss_brings_the_window_up(self) -> None:
+        _run, events, _done = self._run_network([(10060, 1, 0, 5), (0, 4, 1, 5)], None)
+        self.assertIn(("attention", None), events)
+
+    def test_failed_run_reports_files_saved_before_the_drop(self) -> None:
+        self.window._finish_transfer({"success": False, "downloaded": 3, "skipped": 0})
+        self.assertIn("before the connection broke: 3", self.window.log.get("1.0", "end"))
 
     def test_airmtp_sony_advice_is_replaced(self) -> None:
         lines = [
