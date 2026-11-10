@@ -27,7 +27,7 @@ from windows_pairing import PAIRING_CDB, PairingError, build_pairing_payload, pa
 
 
 APP_NAME = "Camera Wi-Fi Transfer"
-APP_VERSION = "0.3.8-beta"
+APP_VERSION = "0.3.9-beta"
 PAIRING_GUID = "0xa9fdb6005452ffff-0x3aa907283c52ffff"
 IMAGE_EXTENSIONS = ["JPG", "JPEG", "JPE", "HEIF", "HIF"]
 RAW_EXTENSIONS = [
@@ -965,6 +965,14 @@ class ImportApp(tk.Tk):
                 "ignore",
                 "--transferorder",
                 "newestfirst",
+                # airMTP caches file names and sizes by MTP object handle
+                # between sessions and only re-checks folder timestamps.
+                # That was designed for Nikon/Canon; on Sony, deleting files
+                # in the camera can leave a handle pointing at a different
+                # file, so a request for cached "C0001.MP4" hung forever.
+                # Reading the list fresh costs well under a second here.
+                "--mtpobjcache",
+                "disabled",
                 # Wi-Fi can stall for several seconds; the airMTP default
                 # of 5 s aborted whole transfers on a single hiccup.
                 "--socketreadwritetimeout",

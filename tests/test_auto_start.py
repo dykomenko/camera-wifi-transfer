@@ -227,6 +227,13 @@ class CameraWaitTests(unittest.TestCase):
         self.assertNotIn("Number of attempts", logs)
         self.assertNotIn("Py: 3.10.6", logs)
 
+    def test_backend_reads_the_file_list_fresh_every_session(self) -> None:
+        with mock.patch.object(self.window, "_run_backend_once", return_value=(0, 0, 0, 0)) as run:
+            self.window._ptpip_worker(self.destination, None)
+        command = run.call_args[0][0]
+        self.assertEqual(command[command.index("--mtpobjcache") + 1], "disabled")
+        self.assertEqual(command[command.index("--downloadhistory") + 1], "ignore")
+
     def test_direct_mode_retries_until_the_camera_appears(self) -> None:
         client = mock.Mock()
         client.probe.side_effect = [

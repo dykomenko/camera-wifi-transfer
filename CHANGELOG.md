@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.9-beta — 2026-11-11
+
+- Disabled airMTP's on-disk cache of camera file info. It maps files by MTP object handle across sessions and validates only folder timestamps; on a Sony camera, after files were deleted in the camera, a cached entry (`C0001.MP4`) led to a request the camera never answered, so every run timed out on the same file. The file list is now read from the camera each session.
+
 ## 0.3.8-beta — 2026-11-11
 
 - While waiting for the camera to reconnect after a drop, the status line itself now says what to do on the camera (Cancel → Send to Computer), and the window is brought to the front with a beep when the connection is lost.
