@@ -42,8 +42,9 @@ the repository, in the owner's `Desktop\SD Backup` folder.
   `0x0072` record under each group.
 
 Header (unit 0 area, `0x0000-0x0140`): u32 at `0x1A` = database modified
-time; u16 at `0xC0` = **number of used units**; a 16-byte database id at
-`0x3A` (also at `PRV00001.BIN+0x04`).
+time; u16 at `0xC0` = **highest used unit number** (equal to the used-unit
+count only while there are no holes); a 16-byte database id at `0x3A`
+(also at `PRV00001.BIN+0x04`).
 
 Free-space bitmap: 128-byte pages (unit with u16 `0x80 + p` at `+0x0C`),
 bitmap bytes from `+0x0E`, one bit per unit, MSB first, page `p` covers
@@ -65,12 +66,47 @@ units `p*256 … p*256+255`. Page 0x0A is at file offset `0x8400`.
 Timestamps are u32 seconds; the value is consistent across records but its
 epoch is not plain Unix time on this camera.
 
+### Record links (confirmed on 16 photos)
+
+* Photo record `M` (type `0x0072`, len `0x6A`, contains the path) → parent =
+  date group in tree 1; sub-record `0x0101` holds its `0x0390` metadata chain.
+* Twin record `R` (type `0x0072`, len `0x5E`, no path) → parent = date group in
+  tree 2; its sub-record `u32 0x0A, u16 0x0104, u32 M` points back to `M`.
+* Group (type `0x01C8`): sub-record `u32 len, u16 0x0101, u16, u32 child[]`.
+* Top node: sub-record `u32 0x0C, u16 0x0127, u32 photo_count`, then
+  `u32 len, u16 0x0101, u8 0x02, u32 group[]`; also a modified time.
+  Photo top nodes: `0x921` (tree 1) and `0x9AE` (tree 2); video top node `0x736`.
+* Removing an id from any list: cut 4 bytes, shift the rest of the record
+  left (across the unit chain), record length −4, list length −4. Bytes past
+  the new end are left as they were.
+
+### Deleting every photo (second experiment)
+
+Done in the camera, partly with "delete all images of this date". Result:
+both date groups in both trees were **freed** and removed from their top
+node lists (top node length `0x3C` → `0x34`), both photo counters 16 → 0,
+`DCIM@MSDCF`, `DCIM` and `MP_ROOT@ANV01` folders were deleted.
+
+### Video
+
+A clip is a group (type `0x01C8`) under the video top node `0x736`, an item
+record (type `0x00E4`, path `CLIP/C0001.MP4`) and a `0x0390` chain.
+Deleting a clip in the camera also removes `CLIP\CnnnnM01.XML`,
+`THMBNL\CnnnnT01.JPG` and the clip's `<Material>` element from
+`MEDIAPRO.XML`, which keeps a fixed file size (padded with spaces) and gets a
+new `createdAt` time.
+
 ## PRV00001.BIN (little-endian)
 
 * `0x00` u32 photo count (16 → 15); `0x04` 16-byte database id.
 * `0x16` modified time as `u16 year, u8 month, day, hour, min, sec` (UTC).
 * `0x2A` time of the newest photo (same format).
-* `0x38` u32: photos in the newest date group (5 → 4).
+* `0x28-0x3B` "newest date" block: u16 `0x3C`, date-time of the newest
+  photo, 3 unknown bytes at `0x31`, u32 `2`, u32 photos in that date (5 → 4).
+  **All zero once no photos are left**, so moving every photo needs no
+  knowledge of the unknown bytes. `0xE0` u32 = that date's tree-2 group id
+  (zero once empty).
+* `0x124` date-time of the newest item (local time).
 * `0x134` u32: photo count again (16 → 15).
 * From `0x200`: 36-byte entries, one per photo, containing the second-tree
   unit id of the photo. The deleted entry was cut out and the rest shifted;
@@ -80,12 +116,8 @@ epoch is not plain Unix time on this camera.
 
 ## Still needed
 
-* A second deletion by the camera (one photo) to confirm the rules and pin
-  down the unknown `PRV00001.BIN` fields.
-* Deleting the **last photo of a date** in the camera: the group is then
-  empty and must disappear from its top node — the usual case when a whole
-  card is moved.
-* Videos: the same experiment for a clip (`MEDIAPRO.XML`, `CLIP`, `THMBNL`,
-  `SUB`, and its entries in `AVF_INFO`).
+* The unknown 3 bytes in the "newest date" block of `PRV00001.BIN` — only
+  needed when some photos stay on the card.
+* Exact `PRV00001.BIN` entry layout for videos.
 * Final check: a deletion done by the PC, then the card is inserted into the
   camera and must show no error.
