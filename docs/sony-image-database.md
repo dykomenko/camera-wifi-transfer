@@ -4,7 +4,18 @@ Goal: move photos/videos off a Sony memory card **on the PC** (copy, verify,
 delete) so that the camera afterwards shows no "image database" error and
 needs no action on the camera.
 
-Status: **research in progress, nothing writes to a card yet.**
+Status: `sony_card_db.py` reads and edits the database in memory and is
+checked against the camera's own deletions (`tests/test_sony_card_db.py`).
+
+> **Correction to the first notes below:** record data in each unit starts at
+> `+0x0E` (0x72 bytes per unit), not `+0x10`. The value first read as a
+> record "type" (`0x72`, `0x1C8`, `0x390`) is the record capacity
+> (1, 4, 8 units). The real header is `u32 capacity, u32 length, u16 type
+> (0x0002 container, 0x0011 item, 0x0032 metadata), u32 parent, u16 kind
+> (0x0002 photo, 0x0003 video, 0x8000 photo twin), u32 created,
+> u32 modified`, then sub-records. The free-space bitmap starts 22 bytes
+> into its record; bit index = unit number − 1. Times are seconds since
+> 1972-01-01 UTC. `sony_card_db.py` is the authoritative description.
 
 Card studied: Sony ILCE-6500, 64 GB SDXC, exFAT. Reference data (card backup
 and the database after a deletion made by the camera itself) is kept outside
