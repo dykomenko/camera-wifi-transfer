@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0-beta — 2026-11-15
+
+- New separate program **Camera Card Mover** (`Camera Card Mover.exe`): moves every photo and video off a Sony camera card in a card reader and updates the camera's own image database (`AVF_INFO`, `MEDIAPRO.XML`) the way the camera does, so the camera shows no database error afterwards. Verified on a Sony a6500.
+- Refuses to touch a card unless its layout is Sony's, the database validates and the files match it; copies are verified by SHA-256 before anything is removed; the card's database is backed up first.
+- Finds cards without a drive letter; optional "open when a card is inserted".
+- Interface in all 12 languages.
+
 ## 0.3.9-beta — 2026-11-11
 
 - Disabled airMTP's on-disk cache of camera file info. It maps files by MTP object handle across sessions and validates only folder timestamps; on a Sony camera, after files were deleted in the camera, a cached entry (`C0001.MP4`) led to a request the camera never answered, so every run timed out on the same file. The file list is now read from the camera each session.

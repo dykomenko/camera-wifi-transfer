@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $BuildRoot = Join-Path $ProjectRoot "build-output"
 $Artifacts = Join-Path $ProjectRoot "artifacts"
-$PackageName = "Camera-WiFi-Transfer-0.3.9-beta"
+$PackageName = "Camera-WiFi-Transfer-0.4.0-beta"
 $Package = Join-Path $BuildRoot $PackageName
 
 Push-Location $ProjectRoot
@@ -18,9 +18,13 @@ try {
     & $Python -m PyInstaller --noconfirm --clean --distpath (Join-Path $BuildRoot "gui-dist") --workpath (Join-Path $BuildRoot "gui-work") packaging\camera-wifi-transfer.spec
     if ($LASTEXITCODE -ne 0) { throw "GUI build failed" }
 
+    & $Python -m PyInstaller --noconfirm --clean --distpath (Join-Path $BuildRoot "mover-dist") --workpath (Join-Path $BuildRoot "mover-work") packaging\card-mover.spec
+    if ($LASTEXITCODE -ne 0) { throw "Card mover build failed" }
+
     New-Item -ItemType Directory -Path $Package -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $BuildRoot "gui-dist\Camera WiFi Transfer.exe") -Destination $Package -Force
     Copy-Item -LiteralPath (Join-Path $BuildRoot "backend-dist\airmtp-backend.exe") -Destination $Package -Force
+    Copy-Item -LiteralPath (Join-Path $BuildRoot "mover-dist\Camera Card Mover.exe") -Destination $Package -Force
     Copy-Item -LiteralPath LICENSE, README.md, README_RU.md, THIRD_PARTY_NOTICES.md, CHANGELOG.md -Destination $Package -Force
     if (Test-Path -LiteralPath docs) {
         Copy-Item -LiteralPath docs -Destination $Package -Recurse -Force
@@ -28,7 +32,7 @@ try {
 
     $SourcePackage = Join-Path $Package "source"
     New-Item -ItemType Directory -Path $SourcePackage -Force | Out-Null
-    Copy-Item -LiteralPath app.py, backend_output.py, localization.py, sony_soap.py, windows_pairing.py -Destination $SourcePackage -Force
+    Copy-Item -LiteralPath app.py, backend_output.py, card_mover.py, card_mover_core.py, localization.py, sony_card_db.py, sony_soap.py, windows_pairing.py -Destination $SourcePackage -Force
     Copy-Item -LiteralPath locales, tests, vendor, packaging, scripts -Destination $SourcePackage -Recurse -Force
     $PrivateBackendData = Join-Path $SourcePackage "vendor\airmtp\appdata"
     if (Test-Path -LiteralPath $PrivateBackendData) {
@@ -42,7 +46,7 @@ try {
         Remove-Item -LiteralPath $_.FullName -Recurse -Force
     }
 
-    $HashLines = foreach ($FileName in @("Camera WiFi Transfer.exe", "airmtp-backend.exe")) {
+    $HashLines = foreach ($FileName in @("Camera WiFi Transfer.exe", "airmtp-backend.exe", "Camera Card Mover.exe")) {
         $Hash = Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $Package $FileName)
         "{0}  {1}" -f $Hash.Hash, $FileName
     }

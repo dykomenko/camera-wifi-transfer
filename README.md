@@ -3,7 +3,7 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)](https://github.com/dykomenko/camera-wifi-transfer/releases)
 [![Windows build](https://github.com/dykomenko/camera-wifi-transfer/actions/workflows/windows-build.yml/badge.svg)](https://github.com/dykomenko/camera-wifi-transfer/actions/workflows/windows-build.yml)
 [![GUI](https://img.shields.io/badge/interface-desktop%20GUI-2ea44f)](README.md)
-[![Tests](https://img.shields.io/badge/tests-50%20passing-2ea44f)](README.md)
+[![Tests](https://img.shields.io/badge/tests-62%20passing-2ea44f)](README.md)
 [![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 [Русский](README_RU.md)
@@ -58,6 +58,19 @@ End-to-end verified on **Sony ILCE-6500 (a6500)**: native Windows USB pairing, d
 Canon EOS and Nikon cameras with built-in Wi-Fi are supported by the underlying airMTP backend but are untested with this app; Nikon needs the manual camera IP. Cameras without **Send to Computer** (some newer bodies offer only FTP or app-based transfer) cannot use the home-network mode.
 
 If you try another model, please report the result in an issue.
+
+## Camera Card Mover (separate program)
+
+`Camera Card Mover.exe` moves **everything** off a Sony camera memory card in a card reader: photos and XAVC S clips. Deleting files from a camera card on a PC normally leaves the camera's own image database (`AVF_INFO`) pointing at missing files, and the camera then reports a database error. This program updates that database the way the camera does when it deletes images itself, so the camera shows no error and needs no "Recover Image DB" or formatting.
+
+- Finds the card even when Windows gave it no drive letter.
+- Changes nothing unless the card has the Sony layout, its database validates, and the files on the card match it exactly.
+- Copies every file through a `.part` file and checks each copy against the original by SHA-256 before anything is removed.
+- Backs up the card's database files to `%LOCALAPPDATA%\CameraCardMover\card-database-backups` first.
+- Moves by a button press; optionally opens by itself when a card is inserted.
+- Only "move everything" is offered: a partial move would need database fields that are not fully understood yet.
+
+Verified on a **Sony a6500** card: after a move the camera showed no error and recorded new photos normally. Other Sony models with the same `AVF_INFO` database should work but are untested; the program refuses cards whose database it does not recognise. Format notes: [docs/sony-image-database.md](docs/sony-image-database.md).
 
 ## Quick start
 
