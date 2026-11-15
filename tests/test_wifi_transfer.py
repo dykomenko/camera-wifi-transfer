@@ -1,90 +1,51 @@
-import json
 import os
 import queue
 import sys
 import tempfile
 import time
-import tkinter as tk
 import unittest
 from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import app  # noqa: E402
+import wifi_transfer  # noqa: E402
+from localization import Translator  # noqa: E402
 from sony_soap import TransportError  # noqa: E402
 
 
-class AutoStartTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        root = Path(self.temp.name)
-        self.destination = root / "photos"
-        env = mock.patch.dict(os.environ, {"LOCALAPPDATA": str(root)})
-        env.start()
-        self.addCleanup(env.stop)
+class _RouteProbe:
+    def __init__(self, address: str = "192.0.2.55", error: OSError | None = None) -> None:
+        self.address = address
+        self.error = error
+        self.connected_to: tuple[str, int] | None = None
 
-    def _write_settings(self, **values: object) -> None:
-        settings_dir = Path(self.temp.name) / "CameraWiFiTransfer"
-        settings_dir.mkdir(parents=True, exist_ok=True)
-        values.setdefault("destination", str(self.destination))
-        (settings_dir / "settings.json").write_text(json.dumps(values), encoding="utf-8")
+    def __enter__(self) -> "_RouteProbe":
+        return self
 
-    def _launch(self) -> mock.MagicMock:
-        try:
-            with mock.patch.object(app.ImportApp, "start_transfer") as start:
-                window = app.ImportApp(language_override="en")
-                window.after(800, window.destroy)
-                window.mainloop()
-        except tk.TclError as exc:  # pragma: no cover - headless machine
-            self.skipTest(f"Tk unavailable: {exc}")
-        return start
+    def __exit__(self, *_args: object) -> None:
+        return None
 
-    def test_transfer_starts_automatically_by_default(self) -> None:
-        self._write_settings()
-        start = self._launch()
-        self.assertEqual(start.call_count, 1)
-        start.assert_called_with(wait_for_camera=True)
+    def connect(self, target: tuple[str, int]) -> None:
+        self.connected_to = target
+        if self.error:
+            raise self.error
 
-    def test_auto_start_can_be_disabled(self) -> None:
-        self._write_settings(auto_start=False)
-        self.assertEqual(self._launch().call_count, 0)
-
-    def test_demo_mode_never_starts_a_transfer(self) -> None:
-        self._write_settings()
-        with mock.patch.object(app.ImportApp, "start_transfer") as start:
-            window = app.ImportApp(language_override="en", demo_mode=True)
-            window.after(800, window.destroy)
-            window.mainloop()
-        start.assert_not_called()
+    def getsockname(self) -> tuple[str, int]:
+        return (self.address, 54321)
 
 
-class CompletionCoverageTests(unittest.TestCase):
-    def setUp(self) -> None:
-        temp = tempfile.TemporaryDirectory()
-        self.addCleanup(temp.cleanup)
-        env = mock.patch.dict(os.environ, {"LOCALAPPDATA": temp.name})
-        env.start()
-        self.addCleanup(env.stop)
-        try:
-            self.window = app.ImportApp(visible=False, language_override="en")
-        except tk.TclError as exc:  # pragma: no cover - headless machine
-            self.skipTest(f"Tk unavailable: {exc}")
-        self.addCleanup(self.window.destroy)
-        self.window.notify_on_complete.set(False)
+class NetworkSelectionTests(unittest.TestCase):
+    def test_primary_lan_ipv4_uses_windows_default_route(self) -> None:
+        probe = _RouteProbe()
+        with mock.patch.object(wifi_transfer.socket, "socket", return_value=probe):
+            self.assertEqual(wifi_transfer.primary_lan_ipv4(), "192.0.2.55")
+        self.assertEqual(probe.connected_to, ("192.0.2.1", 9))
 
-    def test_every_camera_file_accounted_for(self) -> None:
-        self.window.overall_total = 5
-        self.window._finish_transfer({"success": True, "downloaded": 3, "skipped": 2})
-        self.assertEqual(self.window.status_text.get(), "Transfer complete")
-        self.assertIn("All 5 files", self.window.log.get("1.0", "end"))
-
-    def test_missing_files_are_flagged_before_the_card_is_erased(self) -> None:
-        self.window.overall_total = 5
-        self.window._finish_transfer({"success": True, "downloaded": 2, "skipped": 2})
-        self.assertEqual(self.window.status_text.get(), "Needs attention")
-        self.assertIn("only 4 of 5", self.window.log.get("1.0", "end"))
+    def test_primary_lan_ipv4_falls_back_when_route_is_unavailable(self) -> None:
+        probe = _RouteProbe(error=OSError("no route"))
+        with mock.patch.object(wifi_transfer.socket, "socket", return_value=probe):
+            self.assertIsNone(wifi_transfer.primary_lan_ipv4())
 
 
 class CameraWaitTests(unittest.TestCase):
@@ -96,17 +57,13 @@ class CameraWaitTests(unittest.TestCase):
         self.destination = Path(temp.name)
         for patcher in (
             mock.patch.dict(os.environ, {"LOCALAPPDATA": temp.name}),
-            mock.patch.object(app, "CAMERA_RETRY_PAUSE_SECONDS", 0.01),
-            mock.patch.object(app, "backend_command", return_value=["backend"]),
-            mock.patch.object(app, "primary_lan_ipv4", return_value=None),
+            mock.patch.object(wifi_transfer, "CAMERA_RETRY_PAUSE_SECONDS", 0.01),
+            mock.patch.object(wifi_transfer, "backend_command", return_value=["backend"]),
+            mock.patch.object(wifi_transfer, "primary_lan_ipv4", return_value=None),
         ):
             patcher.start()
             self.addCleanup(patcher.stop)
-        try:
-            self.window = app.ImportApp(visible=False, language_override="en")
-        except tk.TclError as exc:  # pragma: no cover - headless machine
-            self.skipTest(f"Tk unavailable: {exc}")
-        self.addCleanup(self.window.destroy)
+        self.window = wifi_transfer.WifiTransfer(Translator("en"), queue.Queue())
 
     def _events(self) -> list[tuple[str, object]]:
         events = []
@@ -126,7 +83,7 @@ class CameraWaitTests(unittest.TestCase):
         return run, events, events[-1]
 
     def test_network_mode_retries_until_the_camera_appears(self) -> None:
-        not_found = (app.BACKEND_ERRNO_COULDNT_CONNECT, 0, 0, 0)
+        not_found = (wifi_transfer.BACKEND_ERRNO_COULDNT_CONNECT, 0, 0, 0)
         run, events, done = self._run_network(
             [not_found, not_found, (0, 3, 2, 5)], time.monotonic() + 60
         )
@@ -137,14 +94,14 @@ class CameraWaitTests(unittest.TestCase):
 
     def test_manual_start_does_not_wait(self) -> None:
         run, _events, done = self._run_network(
-            [(app.BACKEND_ERRNO_COULDNT_CONNECT, 0, 0, 0)], None
+            [(wifi_transfer.BACKEND_ERRNO_COULDNT_CONNECT, 0, 0, 0)], None
         )
         self.assertEqual(run.call_count, 1)
         self.assertFalse(done[1]["success"])
 
     def test_gives_up_when_the_wait_is_over(self) -> None:
         run, events, done = self._run_network(
-            [(app.BACKEND_ERRNO_COULDNT_CONNECT, 0, 0, 0)], time.monotonic()
+            [(wifi_transfer.BACKEND_ERRNO_COULDNT_CONNECT, 0, 0, 0)], time.monotonic()
         )
         self.assertEqual(run.call_count, 1)
         self.assertFalse(done[1]["success"])
@@ -158,7 +115,7 @@ class CameraWaitTests(unittest.TestCase):
     def test_stop_ends_the_wait(self) -> None:
         self.window.cancel_requested.set()
         run, _events, done = self._run_network(
-            [(app.BACKEND_ERRNO_COULDNT_CONNECT, 0, 0, 0)], time.monotonic() + 60
+            [(wifi_transfer.BACKEND_ERRNO_COULDNT_CONNECT, 0, 0, 0)], time.monotonic() + 60
         )
         self.assertEqual(run.call_count, 1)
         self.assertFalse(done[1]["success"])
@@ -187,7 +144,7 @@ class CameraWaitTests(unittest.TestCase):
         self.assertFalse(done[1]["success"])
 
     def test_reconnect_wait_gives_up_eventually(self) -> None:
-        with mock.patch.object(app, "CAMERA_WAIT_SECONDS", 0):
+        with mock.patch.object(wifi_transfer, "CAMERA_WAIT_SECONDS", 0):
             run, events, done = self._run_network([(10060, 3, 0, 10)], None)
         self.assertEqual(run.call_count, 1)
         self.assertFalse(done[1]["success"])
@@ -200,10 +157,6 @@ class CameraWaitTests(unittest.TestCase):
     def test_connection_loss_brings_the_window_up(self) -> None:
         _run, events, _done = self._run_network([(10060, 1, 0, 5), (0, 4, 1, 5)], None)
         self.assertIn(("attention", None), events)
-
-    def test_failed_run_reports_files_saved_before_the_drop(self) -> None:
-        self.window._finish_transfer({"success": False, "downloaded": 3, "skipped": 0})
-        self.assertIn("before the connection broke: 3", self.window.log.get("1.0", "end"))
 
     def test_airmtp_sony_advice_is_replaced(self) -> None:
         lines = [
@@ -219,7 +172,7 @@ class CameraWaitTests(unittest.TestCase):
         ]
         process = mock.Mock(stdout=iter(lines))
         process.wait.return_value = 10060
-        with mock.patch.object(app.subprocess, "Popen", return_value=process):
+        with mock.patch.object(wifi_transfer.subprocess, "Popen", return_value=process):
             self.window._run_backend_once(["backend"], set())
         logs = " ".join(self._logs(self._events()))
         self.assertIn("192.168.2.50", logs)
@@ -242,7 +195,7 @@ class CameraWaitTests(unittest.TestCase):
             mock.Mock(friendly_name="ILCE-6500", model_name="ILCE-6500"),
         ]
         client.browse_all.return_value = []
-        with mock.patch.object(app, "SonySoapClient", return_value=client):
+        with mock.patch.object(wifi_transfer, "SonySoapClient", return_value=client):
             self.window._direct_worker(self.destination, time.monotonic() + 60)
         self.assertEqual(client.probe.call_count, 3)
         self.assertTrue(self._events()[-1][1]["success"])

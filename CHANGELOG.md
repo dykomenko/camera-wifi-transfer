@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0-beta — 2026-11-15
+
+- **One program, new interface.** Camera Wi-Fi Transfer and Camera Card Mover are merged into **Camera Transfer** (`Camera Transfer.exe`) with two tabs: **Over Wi-Fi** and **From memory card**. The window is drawn with HTML/CSS through Microsoft Edge WebView2: Windows 11 look, follows the light/dark theme, clearly highlighted tabs, a status card, a single main button and a folded log.
+- Opens on the memory-card tab when a Sony card is in the reader, and switches to it when a card is inserted (unless a Wi-Fi download is running); a card in the reader also skips the Wi-Fi auto-start.
+- Settings panel: language, notifications, Wi-Fi mode, camera IP, auto-start, Sony USB pairing, "open when a card is inserted".
+- The Wi-Fi logic moved unchanged into `wifi_transfer.py`; its tests moved with it.
+- Tests no longer create the default download folder in the user's Pictures folder.
+
 ## 0.4.0-beta — 2026-11-15
 
 - New separate program **Camera Card Mover** (`Camera Card Mover.exe`): moves every photo and video off a Sony camera card in a card reader and updates the camera's own image database (`AVF_INFO`, `MEDIAPRO.XML`) the way the camera does, so the camera shows no database error afterwards. Verified on a Sony a6500.

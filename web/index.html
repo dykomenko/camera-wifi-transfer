@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Camera Transfer</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="app" class="loading">
+  <main class="content">
+    <div class="topbar">
+      <div class="brand"><span class="icon brand-icon" aria-hidden="true">&#xE722;</span><span id="brand-name">Camera Transfer</span></div>
+      <button class="ghost icon-button" id="settings-button" type="button"><span class="icon" aria-hidden="true">&#xE713;</span><span data-t="ui_settings">Settings</span></button>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button role="tab" class="tab" id="tab-wifi" data-tab="wifi" type="button"><span class="icon" aria-hidden="true">&#xE701;</span><span data-t="ui_tab_wifi">Wi-Fi</span></button>
+      <button role="tab" class="tab" id="tab-card" data-tab="card" type="button"><span class="icon" aria-hidden="true">&#xE7F1;</span><span data-t="ui_tab_card">Memory card</span><span class="tab-dot" id="card-dot" hidden></span></button>
+    </div>
+
+    <section class="status-card" id="status-card" aria-live="polite">
+      <div class="status-icon" id="status-icon"><span class="icon" id="status-glyph" aria-hidden="true">&#xE722;</span></div>
+      <div class="status-text">
+        <div class="status-title" id="status-title"></div>
+        <div class="status-sub" id="status-sub"></div>
+      </div>
+      <span class="pill" id="status-pill" hidden></span>
+    </section>
+
+    <section class="field">
+      <label class="label" data-t="destination" for="folder-path">Download folder</label>
+      <div class="folder-row">
+        <div class="folder-box" id="folder-path" title=""><span class="icon" aria-hidden="true">&#xE8B7;</span><span id="folder-text"></span></div>
+        <button type="button" id="choose-folder" data-t="choose">Browse…</button>
+        <button type="button" class="icon-only" id="open-folder" aria-label="Open"><span class="icon" aria-hidden="true">&#xE8A7;</span></button>
+      </div>
+    </section>
+
+    <section class="options" id="options">
+      <label class="check"><input type="checkbox" id="opt-date" data-setting="organize_by_date"><span data-t="date_folders">Folders by date</span></label>
+      <label class="check wifi-only ptp-only"><input type="checkbox" id="opt-jpeg" data-setting="include_jpeg"><span data-t="jpeg_heif">JPEG / HEIF</span></label>
+      <label class="check wifi-only ptp-only"><input type="checkbox" id="opt-raw" data-setting="include_raw"><span data-t="raw">RAW</span></label>
+      <label class="check wifi-only ptp-only"><input type="checkbox" id="opt-video" data-setting="include_video"><span data-t="video">Video</span></label>
+    </section>
+
+    <section class="actions">
+      <button type="button" class="primary" id="main-button"><span class="icon" id="main-glyph" aria-hidden="true">&#xE896;</span><span id="main-label"></span></button>
+      <button type="button" id="stop-button" hidden><span class="icon" aria-hidden="true">&#xE71A;</span><span data-t="stop">Stop</span></button>
+      <span class="hint" id="hint"></span>
+    </section>
+
+    <section class="progress-card" id="progress-card">
+      <div class="progress-head">
+        <span id="progress-title"></span>
+        <span class="muted" id="progress-numbers"></span>
+      </div>
+      <div class="track"><div class="bar" id="progress-bar"></div></div>
+      <div class="progress-foot">
+        <span class="muted" id="progress-sub"></span>
+        <button type="button" class="link" id="details-toggle"><span data-t="ui_details">Details</span> <span class="icon chevron" aria-hidden="true">&#xE70D;</span></button>
+      </div>
+      <div class="log" id="log" hidden></div>
+    </section>
+  </main>
+
+  <div class="scrim" id="settings-scrim" hidden></div>
+  <aside class="drawer" id="settings" hidden aria-labelledby="settings-title">
+    <div class="drawer-head">
+      <h2 id="settings-title" data-t="ui_settings">Settings</h2>
+      <button type="button" class="ghost icon-only" id="settings-close" aria-label="Close"><span class="icon" aria-hidden="true">&#xE711;</span></button>
+    </div>
+    <div class="drawer-body">
+      <h3 data-t="ui_settings_general">General</h3>
+      <label class="row-field"><span data-t="language">Language</span><select id="language"></select></label>
+      <label class="check"><input type="checkbox" data-setting="notify_on_complete"><span data-t="notify_complete">Notify when done</span></label>
+
+      <h3 data-t="ui_tab_wifi">Wi-Fi</h3>
+      <div class="radio-group">
+        <label class="radio"><input type="radio" name="mode" value="ptpip"><span data-t="network_mode">Home network</span></label>
+        <label class="radio"><input type="radio" name="mode" value="direct"><span data-t="direct_mode">Direct</span></label>
+      </div>
+      <p class="note" id="mode-note"></p>
+      <label class="row-field ptp-only-setting"><span data-t="camera_ip">Camera IP</span><input type="text" id="camera-ip" data-setting="camera_ip" spellcheck="false" autocomplete="off"></label>
+      <p class="note ptp-only-setting" data-t="camera_ip_hint"></p>
+      <label class="check"><input type="checkbox" data-setting="auto_start"><span data-t="auto_start">Start downloading when the app opens</span></label>
+      <button type="button" id="pair-button"><span class="icon" aria-hidden="true">&#xE88E;</span><span data-t="sony_pairing">Sony USB pairing…</span></button>
+
+      <h3 data-t="ui_tab_card">Memory card</h3>
+      <label class="check"><input type="checkbox" id="card-autostart"><span data-t="mover_autostart">Open when a card is inserted</span></label>
+      <p class="note" data-t="ui_card_settings_note"></p>
+      <p class="version" id="version"></p>
+    </div>
+  </aside>
+
+  <div class="dialog-scrim" id="dialog" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+      <h2 id="dialog-title"></h2>
+      <div class="dialog-text" id="dialog-text"></div>
+      <div class="dialog-buttons" id="dialog-buttons"></div>
+    </div>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

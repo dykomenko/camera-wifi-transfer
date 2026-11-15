@@ -1,24 +1,26 @@
-# Camera Wi-Fi Transfer
+# Camera Transfer (Camera Wi-Fi Transfer)
 
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows)](https://github.com/dykomenko/camera-wifi-transfer/releases)
 [![Windows build](https://github.com/dykomenko/camera-wifi-transfer/actions/workflows/windows-build.yml/badge.svg)](https://github.com/dykomenko/camera-wifi-transfer/actions/workflows/windows-build.yml)
 [![GUI](https://img.shields.io/badge/interface-desktop%20GUI-2ea44f)](README.md)
-[![Tests](https://img.shields.io/badge/tests-62%20passing-2ea44f)](README.md)
+[![Tests](https://img.shields.io/badge/tests-67%20passing-2ea44f)](README.md)
 [![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 [Русский](README_RU.md)
 
-**Camera Wi-Fi Transfer is a Windows desktop application with a graphical interface** for importing photos, RAW (ARW) files, and videos from Sony Alpha and other compatible cameras over Wi-Fi—without requiring the manufacturer's desktop importer. It is a lightweight alternative to the Wi-Fi Import of Sony PlayMemories Home, using the camera's **Send to Computer** mode.
+**Camera Transfer is a Windows desktop application** for importing photos, RAW (ARW) files, and videos from Sony Alpha and other compatible cameras over Wi-Fi, and for moving everything off a Sony memory card in a card reader without breaking the camera's database—without requiring the manufacturer's desktop importer. It is a lightweight alternative to the Wi-Fi Import of Sony PlayMemories Home, using the camera's **Send to Computer** mode.
 
-![Camera Wi-Fi Transfer desktop interface showing transfer mode, destination, file filters, and transfer log](docs/screenshot.jpg)
+![Camera Transfer window: Over Wi-Fi and From memory card tabs, camera status, download folder, file types and a single main button](docs/screenshot.jpg)
 
 ## Why it exists
 
-Camera companion apps are often slow, unreliable, or phone-first. Camera Wi-Fi Transfer provides a small, understandable Windows GUI that works with a wired PC and a camera connected to the same router.
+Camera companion apps are often slow, unreliable, or phone-first. Camera Transfer is one small, understandable window: one tab downloads over Wi-Fi from a camera on the same router, the other empties a memory card in the card reader.
 
 ## Features
 
-- Native Windows GUI: mode, destination, filters, progress, and readable log
+- One modern window with two tabs, **Over Wi-Fi** and **From memory card**; follows the Windows light/dark theme
+- Switches to the memory-card tab by itself when a Sony card is inserted
+- Rarely used options (camera IP, direct mode, USB pairing, start-up behaviour) live in Settings; the log is folded under Details
 - Clean per-file status plus an overall `current / total` progress bar
 - Card capacity and free-space display when the camera reports it
 - Optional completion notification with download and skip counts
@@ -59,26 +61,27 @@ Canon EOS and Nikon cameras with built-in Wi-Fi are supported by the underlying 
 
 If you try another model, please report the result in an issue.
 
-## Camera Card Mover (separate program)
+## Moving a memory card (From memory card tab)
 
-`Camera Card Mover.exe` moves **everything** off a Sony camera memory card in a card reader: photos and XAVC S clips. Deleting files from a camera card on a PC normally leaves the camera's own image database (`AVF_INFO`) pointing at missing files, and the camera then reports a database error. This program updates that database the way the camera does when it deletes images itself, so the camera shows no error and needs no "Recover Image DB" or formatting.
+The **From memory card** tab moves **everything** off a Sony camera memory card in a card reader: photos and XAVC S clips. Deleting files from a camera card on a PC normally leaves the camera's own image database (`AVF_INFO`) pointing at missing files, and the camera then reports a database error. Camera Transfer updates that database the way the camera does when it deletes images itself, so the camera shows no error and needs no "Recover Image DB" or formatting.
 
 - Finds the card even when Windows gave it no drive letter.
 - Changes nothing unless the card has the Sony layout, its database validates, and the files on the card match it exactly.
 - Copies every file through a `.part` file and checks each copy against the original by SHA-256 before anything is removed.
 - Backs up the card's database files to `%LOCALAPPDATA%\CameraCardMover\card-database-backups` first.
-- Moves by a button press; optionally opens by itself when a card is inserted.
+- Moves by a button press; optionally starts with Windows in the background and opens when a card is inserted.
 - Only "move everything" is offered: a partial move would need database fields that are not fully understood yet.
 
-Verified on a **Sony a6500** card: after a move the camera showed no error and recorded new photos normally. Other Sony models with the same `AVF_INFO` database should work but are untested; the program refuses cards whose database it does not recognise. Format notes: [docs/sony-image-database.md](docs/sony-image-database.md).
+Verified on a **Sony a6500** card: after a move the camera showed no error and recorded new photos normally. Other Sony models with the same `AVF_INFO` database should work but are untested; cards whose database is not recognised are left untouched. Format notes: [docs/sony-image-database.md](docs/sony-image-database.md).
 
 ## Quick start
 
 1. Download and extract the latest ZIP from [Releases](../../releases/latest).
-2. Run `Camera WiFi Transfer.exe`.
-3. Choose a destination and file types.
-4. Enable `Send to Computer`, `PC transfer`, or the equivalent mode on the camera.
-5. Click **Download new files**.
+2. Run `Camera Transfer.exe` (keep `airmtp-backend.exe` next to it).
+3. **Over Wi-Fi:** enable `Send to Computer`, `PC transfer`, or the equivalent mode on the camera; the download starts by itself (or click **Download new files**).
+4. **From memory card:** insert the camera's card into the card reader and click **Move everything to the PC**.
+
+The window uses Microsoft Edge WebView2, which is part of Windows 11 and installed on most Windows 10 PCs.
 
 Settings are stored per Windows user in:
 

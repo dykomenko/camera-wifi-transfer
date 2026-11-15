@@ -118,22 +118,5 @@ class MoveAllTests(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.dest, "DSC04090 (2).ARW")))
 
 
-class InterfaceTests(unittest.TestCase):
-    def test_window_builds_in_every_language(self) -> None:
-        import tkinter as tk
-
-        import card_mover
-        from localization import SUPPORTED_LANGUAGES
-
-        with mock.patch.object(core, "find_sony_cards", return_value=[]):
-            for language in SUPPORTED_LANGUAGES:
-                try:
-                    app = card_mover.MoverApp(language=language, visible=False)
-                except tk.TclError as exc:  # pragma: no cover - headless machine
-                    self.skipTest(f"Tk unavailable: {exc}")
-                app.update_idletasks()
-                app.destroy()
-
-
 if __name__ == "__main__":
     unittest.main()
