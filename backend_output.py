@@ -49,6 +49,7 @@ class ParsedBackendLine:
     storage_label: str | None = None
     item_done: bool = False
     item_skipped: bool = False
+    renamed: tuple[str, str] | None = None  # (name already taken, name used instead)
 
 
 class BackendOutputParser:
@@ -92,6 +93,8 @@ class BackendOutputParser:
                         item_done=True,
                         item_skipped=fields[3] != "downloaded",
                     )
+                if kind == "RENAMED" and len(fields) >= 2:
+                    return ParsedBackendLine(renamed=(fields[0], fields[1]))
                 if kind == "STORAGE" and len(fields) >= 3:
                     return ParsedBackendLine(
                         storage_total=max(0, int(fields[0])),

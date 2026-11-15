@@ -17,6 +17,7 @@ import six
 from six.moves import xrange
 from six.moves import cPickle as pickle
 import argparse
+import glob
 import json
 import mtpwifi
 from mtpdef import *
@@ -650,7 +651,7 @@ def processCmdLine():
 	parser.add_argument('--startdate', help='Only include image/file(s) captured on or later than date. Date-only Ex: --startdate 12/05/14. Date+Time Example: --startdate \"12/05/14 15:30:00\"', metavar="date", required=False)
 	parser.add_argument('--enddate', help='Only include image/file(s) captured on or earlier than date or date+time. Date without a specified time is inclusive, so for example --enddate 06/12/14 is interpreted as 06/12/14 23:59:59', metavar="date", required=False)
 	parser.add_argument('--outputdir', type=str, help='Directory to store image/file(s) to.  Default is current directory. No ending backslash is necessary. If path contains any spaces enclose it in double quotes. Example: --outputdir \"c:\My Documents\"', default=None, metavar="path", required=False)
-	parser.add_argument('--ifexists', type=str.lower, choices=['uniquename', 'skip', 'overwrite', 'prompt', 'exit'], help='Action to take if file with same name already exists. Default is "%(default)s"', default='uniquename', required=False)
+	parser.add_argument('--ifexists', type=str.lower, choices=['uniquename', 'skip', 'skipsame', 'overwrite', 'prompt', 'exit'], help='Action to take if file with same name already exists. Default is "%(default)s"', default='uniquename', required=False)
 	parser.add_argument('--downloadhistory', type=str.lower, choices=['skipfiles', 'ignore', 'clear' ], help='\'skipfiles\' means that files in history (ie, previously downloaded) will be skipped and not downloaded. Default is "%(default)s"', default='skipfiles', required=False)
 	parser.add_argument('--onlyfolders', help='Only include image/file(s) existing in specified camera folders.. Ex: \"--onlyfolders 100D7200 101D7200\". Default is to include all folders', default=None, nargs='+', metavar="camera_folder", required=False)
 	parser.add_argument('--excludefolders', help='Exclude image/file(s) existing in specified camera folders.. Ex: \"--excludefolders 103D7200\". Default is no exclusions.', default=None, nargs='+', metavar="camera_folder", required=False)			
@@ -2036,6 +2037,26 @@ def generateUniqueFilename(origFilenameWithPath):
 		
 
 #
+# Camera Wi-Fi Transfer: returns the path of a local file that holds the same
+# camera object as expectedSize says - the file itself or one of the copies
+# generateUniqueFilename() made for this name ("<name>-new-<n><ext>") - or None.
+# MTP reports 0xFFFFFFFF as the size of objects of 4 GiB and more; any local
+# file at least that large then counts as the same.
+#
+def findSameSizedLocalCopy(localFilenameWithPath, expectedSize):
+	rootfilename = os.path.splitext(localFilenameWithPath)
+	candidates = [localFilenameWithPath] + sorted(glob.glob("{:s}-new-*{:s}".format(glob.escape(rootfilename[0]), glob.escape(rootfilename[1]))))
+	for candidate in candidates:
+		try:
+			size = os.path.getsize(candidate)
+		except OSError:
+			continue
+		if size == expectedSize or (expectedSize == 0xFFFFFFFF and size >= expectedSize):
+			return candidate
+	return None
+
+
+#
 # prompts the user for a single-character selection (+enter),
 # only allowing characters specfied in validKeyList. check
 # is case-insensitive.
@@ -2692,7 +2713,26 @@ def downloadMtpFileObjects(firstMtpObjectToDownload = None):
 					keyResponse = promptWithSingleKeyResponse("(S)kip, (O)verwrite, (U)niquename, (E)xit [+enter]: ", 'soue')
 				else:
 					keyResponse = ''			
-				if g.args['ifexists'] == 'skip' or keyResponse == 'S':
+				if g.args['ifexists'] == 'skipsame':
+					#
+					# Camera Wi-Fi Transfer: a name match alone does not prove it is the
+					# same photo (camera numbering restarts, two bodies, 9999 wrap). Skip
+					# only when the existing file - or an earlier "-new-N" copy of this
+					# name - has the camera object's size; otherwise keep both.
+					#
+					sameCopy = findSameSizedLocalCopy(localFilenameWithPath, mtpObject.mtpObjectInfo.objectCompressedSize)
+					if sameCopy:
+						applog_i("Skipping \"{:s}\" - file exists".format(sameCopy))
+						g.dlstats.countFilesSkippedDueToFileExistingLocally += 1
+						cwftGuiEvent('ITEM_DONE', cwftCurrent, cwftTotal, localFilenameWithoutPath, 'skipped')
+						continue
+					uniqueFilenameWithPath = generateUniqueFilename(localFilenameWithPath)
+					uniqueFilenameWithoutPath = os.path.basename(uniqueFilenameWithPath)
+					applog_v("\"{:s}\" exists with a different size - will write to \"{:s}\"".format(localFilenameWithPath, uniqueFilenameWithoutPath))
+					cwftGuiEvent('RENAMED', localFilenameWithoutPath, uniqueFilenameWithoutPath)
+					localFilenameWithPath = uniqueFilenameWithPath
+					localFilenameWithoutPath = uniqueFilenameWithoutPath
+				elif g.args['ifexists'] == 'skip' or keyResponse == 'S':
 					if not keyResponse:
 						applog_i("Skipping \"{:s}\" - file exists".format(localFilenameWithPath))
 					g.dlstats.countFilesSkippedDueToFileExistingLocally += 1

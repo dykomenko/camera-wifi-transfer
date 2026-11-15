@@ -528,7 +528,11 @@ class WifiTransfer:
                 "--outputdir",
                 str(destination),
                 "--ifexists",
-                "skip",
+                # A file of the same name is skipped only when it has the
+                # camera file's size; a different photo that happens to share
+                # the name (numbering restarted, second camera) is saved as
+                # "<name>-new-<n>" instead of being silently left behind.
+                "skipsame",
                 "--downloadhistory",
                 # "skipfiles" trusts a persistent per-camera ledger of filenames
                 # ever downloaded, even if that file no longer exists in the
@@ -715,6 +719,9 @@ class WifiTransfer:
                         (parsed.filename, parsed.percent or 0, current, total),
                     )
                 )
+            if parsed.renamed is not None:
+                taken, used = parsed.renamed
+                self.events.put(("log", self.t("ui_renamed_duplicate", name=taken, new=used)))
             if parsed.item_done:
                 if parsed.item_skipped:
                     skipped += 1

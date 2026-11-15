@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.2-beta — 2026-11-15
+
+- Wi-Fi (home network): a file with the camera file's name already in the folder is skipped only if it is the same size. A different photo that happens to share the name (numbering restarted after formatting, the 9999 wrap, a second camera) used to be skipped and counted as "already present"; it is now saved as `<name>-new-<n>` and the log says so. Earlier `-new-<n>` copies are checked too, so the next sync does not download them again. Files are still never overwritten.
+
 ## 0.5.1-beta — 2026-11-15
 
 - Fixed **Stop** for Wi-Fi downloads doing nothing for a long time: the bundled `airmtp-backend.exe` runs the real backend in a child process, and only the parent was terminated, so the search went on and the app kept waiting for it. Stop now ends the whole process tree (measured: 0.2 s) and the window shows "Stopping…" right away; a stopped run is reported as "Stopped", not as an error.

@@ -154,4 +154,5 @@ MESSAGES: dict[str, str] = {
     "ui_stopping": "Stopping…",
     "ui_stopped": "Stopped",
     "ui_wifi_search_stopped_for_card": "A memory card was inserted, so the Wi-Fi camera search was stopped.",
+    "ui_renamed_duplicate": "{name} is already in the folder but is a different photo, so it was saved as {new}.",
 }

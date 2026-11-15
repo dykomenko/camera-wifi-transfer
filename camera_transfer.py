@@ -33,7 +33,7 @@ from wifi_transfer import (
 )
 from windows_pairing import PairingError
 
-APP_VERSION = "0.5.1-beta"
+APP_VERSION = "0.5.2-beta"
 CARD_POLL_SECONDS = 2.0
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "CameraTransfer"

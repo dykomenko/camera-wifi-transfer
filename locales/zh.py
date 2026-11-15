@@ -154,4 +154,5 @@ MESSAGES: dict[str, str] = {
     "ui_stopping": "正在停止…",
     "ui_stopped": "已停止",
     "ui_wifi_search_stopped_for_card": "已插入存储卡，因此已停止通过 Wi-Fi 查找相机。",
+    "ui_renamed_duplicate": "文件夹中已有 {name}，但这是另一张照片，已另存为 {new}。",
 }

@@ -154,4 +154,5 @@ MESSAGES: dict[str, str] = {
     "ui_stopping": "Зупиняю…",
     "ui_stopped": "Зупинено",
     "ui_wifi_search_stopped_for_card": "Вставлено картку пам'яті — пошук камери через Wi-Fi зупинено.",
+    "ui_renamed_duplicate": "{name} вже є в папці, але це інший знімок — збережено як {new}.",
 }
