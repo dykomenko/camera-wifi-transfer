@@ -151,4 +151,7 @@ MESSAGES: dict[str, str] = {
     "ui_cancel": "Скасаваць",
     "ui_open_folder": "Адкрыць папку",
     "ui_webview_missing": "Для гэтага акна патрэбны Microsoft Edge WebView2 Runtime. Усталюйце яго з сайта microsoft.com (пошук «WebView2 Runtime») і запусціце праграму зноў.",
+    "ui_stopping": "Спыняю…",
+    "ui_stopped": "Спынена",
+    "ui_wifi_search_stopped_for_card": "Устаўлена карта памяці — пошук камеры праз Wi-Fi спынены.",
 }

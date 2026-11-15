@@ -151,4 +151,7 @@ MESSAGES: dict[str, str] = {
     "ui_cancel": "Cancel",
     "ui_open_folder": "Open folder",
     "ui_webview_missing": "Microsoft Edge WebView2 Runtime is needed to show this window. Install it from microsoft.com (search for “WebView2 Runtime”) and start the app again.",
+    "ui_stopping": "Stopping…",
+    "ui_stopped": "Stopped",
+    "ui_wifi_search_stopped_for_card": "A memory card was inserted, so the Wi-Fi camera search was stopped.",
 }

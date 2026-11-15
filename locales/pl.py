@@ -151,4 +151,7 @@ MESSAGES: dict[str, str] = {
     "ui_cancel": "Anuluj",
     "ui_open_folder": "Otwórz folder",
     "ui_webview_missing": "To okno wymaga środowiska Microsoft Edge WebView2 Runtime. Zainstaluj je ze strony microsoft.com (wyszukaj „WebView2 Runtime”) i uruchom program ponownie.",
+    "ui_stopping": "Zatrzymuję…",
+    "ui_stopped": "Zatrzymano",
+    "ui_wifi_search_stopped_for_card": "Włożono kartę pamięci, więc wyszukiwanie aparatu przez Wi-Fi zostało zatrzymane.",
 }

@@ -33,7 +33,7 @@ from wifi_transfer import (
 )
 from windows_pairing import PairingError
 
-APP_VERSION = "0.5.0-beta"
+APP_VERSION = "0.5.1-beta"
 CARD_POLL_SECONDS = 2.0
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "CameraTransfer"
@@ -107,7 +107,9 @@ def set_card_autostart(enabled: bool) -> None:
                 pass
 
 
-def wifi_summary(t: Translator, result: Any, total: int, notify: bool, folder: str) -> dict[str, Any]:
+def wifi_summary(
+    t: Translator, result: Any, total: int, notify: bool, folder: str, *, cancelled: bool = False
+) -> dict[str, Any]:
     """Describe a finished Wi-Fi transfer: headline, card coverage, dialog text."""
 
     if isinstance(result, dict):
@@ -117,6 +119,12 @@ def wifi_summary(t: Translator, result: Any, total: int, notify: bool, folder: s
     else:
         success, downloaded, skipped = bool(result), 0, 0
     counts = t("done_counts", downloaded=downloaded, skipped=skipped)
+    if cancelled:
+        return {
+            "success": False, "complete": False, "cancelled": True, "headline": t("ui_stopped"),
+            "coverage": t("partial_counts", downloaded=downloaded) if downloaded else "",
+            "counts": counts, "dialog": "",
+        }
     if not success:
         coverage = t("transfer_not_completed")
         if downloaded:
@@ -160,6 +168,9 @@ class CameraTransferApp:
         self.outbox: queue.Queue[list[Any]] = queue.Queue()
         self.wifi = WifiTransfer(self.t, self.wifi_events)
         self.wifi_total = 0
+        # True once the camera answered and files are being handled; until
+        # then a Wi-Fi run is only searching and may be stopped for a card.
+        self.wifi_transferring = False
         self.window: Any = None
         self.ui_ready = threading.Event()
         self.closing = threading.Event()
@@ -209,9 +220,15 @@ class CameraTransferApp:
                 total=format_size(total), free=format_size(free), percent=percent,
             )
             return ["storage", text]
+        if kind in ("storage", "file_progress") and not self.wifi_transferring:
+            self.wifi_transferring = True
+            self.outbox.put(["wifi_transferring", True])
         if kind == "overall":
             current, total = payload
             self.wifi_total = int(total)
+            if total and not self.wifi_transferring:
+                self.wifi_transferring = True
+                self.outbox.put(["wifi_transferring", True])
             if total:
                 self._set_title(int(current * 100 / total))
             return ["overall", [int(current), int(total)]]
@@ -220,9 +237,11 @@ class CameraTransferApp:
             return None
         if kind == "done":
             self._set_title(None)
+            self.wifi_transferring = False
             summary = wifi_summary(
                 self.t, payload, self.wifi_total,
                 bool(self.values.get("notify_on_complete")), str(self.values["destination"]),
+                cancelled=self.wifi.cancel_requested.is_set(),
             )
             if summary["coverage"] and summary["success"]:
                 self.wifi_events.put(("log", summary["coverage"]))
@@ -284,10 +303,28 @@ class CameraTransferApp:
             }
         self.push("card_state", self.card_state)
         if not initial and self.card_state["state"] == "ready":
+            if self.wifi.running and not self.wifi_transferring:
+                # Only searching for the camera: the card is what the user
+                # wants now.  A download in progress is never interrupted.
+                self.stop_wifi_search_for_card()
             if not self.wifi.running:
                 self.push("switch_tab", "card")
             if self.watch:
                 self._bring_to_front()
+
+    def stop_wifi_search_for_card(self) -> bool:
+        """Stop a Wi-Fi run that has not reached the camera; True if stopped."""
+
+        if not self.wifi.running:
+            return True
+        if self.wifi_transferring:
+            return False
+        self.push("log", self.t("ui_wifi_search_stopped_for_card"))
+        self.wifi.stop(quiet=True)
+        worker = self.wifi.worker
+        if worker is not None:
+            worker.join(timeout=10)
+        return not self.wifi.running
 
     def _card_monitor(self) -> None:
         while not self.closing.wait(CARD_POLL_SECONDS):
@@ -521,6 +558,7 @@ class Api:
         except OSError as exc:
             return {"ok": False, "title": t("cannot_create_folder"), "message": str(exc)}
         app.wifi_total = 0
+        app.wifi_transferring = False
         app.wifi.start(options, wait_for_camera=auto)
         return {"ok": True}
 
@@ -532,8 +570,10 @@ class Api:
         app = self._app
         t = app.t
         card = app.card
-        if app.wifi.running or app._card_moving():
+        if app._card_moving():
             return {"ok": False, "message": t("finish_or_stop")}
+        if app.wifi.running and not app.stop_wifi_search_for_card():
+            return {"ok": False, "message": t("ui_card_busy_wifi")}
         if card is None or not card.files:
             return {"ok": False, "message": t("mover_no_card")}
         destination = os.path.normpath(os.path.expanduser(str(app.values["destination"])))

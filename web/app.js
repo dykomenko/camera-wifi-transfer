@@ -9,7 +9,7 @@ const state = {
   strings: {},
   settings: {},
   tab: "wifi",
-  wifi: { phase: "idle", status: "", storage: "", current: 0, total: 0, file: "", filePercent: 0, result: null },
+  wifi: { phase: "idle", status: "", storage: "", current: 0, total: 0, file: "", filePercent: 0, result: null, transferring: false, stopping: false },
   card: { state: "none", photos: 0, videos: 0, size: "", message: "", percent: 0, phase: "idle", result: null },
   logOpen: false,
 };
@@ -65,6 +65,10 @@ function busy() {
   return state.wifi.phase === "running" || state.card.phase === "moving";
 }
 
+function wifiBlocksCard() {
+  return state.wifi.phase === "running" && state.wifi.transferring;
+}
+
 function render() {
   const tab = state.tab;
   for (const button of document.querySelectorAll(".tab")) {
@@ -107,9 +111,13 @@ function renderWifi() {
   $("main-label").textContent = t("download_new");
   main.disabled = w.phase === "running" || state.card.phase === "moving";
   $("stop-button").hidden = w.phase !== "running";
-  $("hint").textContent = t("ui_hint_wifi");
+  $("stop-button").disabled = w.stopping;
+  $("hint").textContent = w.stopping ? t("ui_stopping") : t("ui_hint_wifi");
 
-  if (w.phase === "running") {
+  if (w.phase === "running" && w.stopping) {
+    setStatus("busy", G.wifi, t("ui_stopping"), "");
+    setProgress(t("ui_stopping"), "", 0, "", "indeterminate");
+  } else if (w.phase === "running") {
     setStatus("accent busy", G.wifi, w.status || t("connecting"), w.storage || t("preparing_transfer"));
     if (w.total) {
       const overall = Math.round((w.current * 100) / w.total);
@@ -119,6 +127,9 @@ function renderWifi() {
     } else {
       setProgress(w.status || t("connecting"), "", 0, "", "indeterminate");
     }
+  } else if (w.phase === "done" && w.result && w.result.cancelled) {
+    setStatus("", G.camera, w.result.headline, w.result.coverage || instruction);
+    setProgress(w.result.headline, "", 0, w.result.coverage, "");
   } else if (w.phase === "done" && w.result) {
     const r = w.result;
     const tone = r.success && r.complete ? "success" : "warning";
@@ -136,9 +147,10 @@ function renderCard() {
   const main = $("main-button");
   $("main-glyph").textContent = G.forward;
   $("main-label").textContent = t("mover_move_all");
-  main.disabled = !(c.state === "ready" && c.phase !== "moving" && state.wifi.phase !== "running");
+  main.disabled = !(c.state === "ready" && c.phase !== "moving" && !wifiBlocksCard());
   $("stop-button").hidden = c.phase !== "moving";
-  $("hint").textContent = state.wifi.phase === "running" ? t("ui_card_busy_wifi") : t("ui_hint_card");
+  $("stop-button").disabled = false;
+  $("hint").textContent = wifiBlocksCard() ? t("ui_card_busy_wifi") : t("ui_hint_card");
 
   if (c.phase === "moving") {
     const updating = c.key === "updating_card";
@@ -302,7 +314,7 @@ async function onMain() {
   if (state.tab === "wifi") {
     const result = await api().start_wifi();
     if (!result.ok) { await alertDialog(result.title, result.message); return; }
-    state.wifi = { phase: "running", status: t("connecting"), storage: "", current: 0, total: 0, file: "", filePercent: 0, result: null };
+    state.wifi = { phase: "running", status: t("connecting"), storage: "", current: 0, total: 0, file: "", filePercent: 0, result: null, transferring: false, stopping: false };
     log("\n" + t("new_run"));
     render();
     return;
@@ -322,11 +334,15 @@ async function onMain() {
 }
 
 async function onStop() {
-  if (state.tab === "wifi" || state.wifi.phase === "running") {
-    if (await confirmDialog(t("stop_title"), t("stop_question"), t("stop"))) api().stop_wifi();
-  } else {
+  if (state.tab === "card" && state.card.phase === "moving") {
     api().stop_card();
+    return;
   }
+  if (state.wifi.phase !== "running" || state.wifi.stopping) return;
+  if (!(await confirmDialog(t("stop_title"), t("stop_question"), t("stop")))) return;
+  state.wifi.stopping = true;
+  render();
+  api().stop_wifi();
 }
 
 function onEvent(event) {
@@ -339,12 +355,15 @@ function onEvent(event) {
     case "storage": w.storage = data; break;
     case "overall": w.current = data[0]; w.total = data[1]; break;
     case "file_progress": w.file = data[0]; w.filePercent = data[1]; w.total = data[3] || w.total; break;
+    case "wifi_transferring": w.transferring = true; break;
     case "wifi_started":
-      state.wifi = { phase: "running", status: t("connecting"), storage: "", current: 0, total: 0, file: "", filePercent: 0, result: null };
+      state.wifi = { phase: "running", status: t("connecting"), storage: "", current: 0, total: 0, file: "", filePercent: 0, result: null, transferring: false, stopping: false };
       log("\n" + t("new_run"));
       break;
     case "wifi_done":
       w.phase = "done";
+      w.stopping = false;
+      w.transferring = false;
       w.result = data;
       if (data.success && data.complete) w.current = w.total;
       if (data.dialog) {

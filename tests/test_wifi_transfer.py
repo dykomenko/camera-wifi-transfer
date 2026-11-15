@@ -201,5 +201,30 @@ class CameraWaitTests(unittest.TestCase):
         self.assertTrue(self._events()[-1][1]["success"])
 
 
+
+class StopTests(unittest.TestCase):
+    def test_stop_ends_a_backend_that_runs_in_a_child_process(self) -> None:
+        # Like the bundled airmtp-backend.exe: the parent starts a child that
+        # inherits the output pipe.  Stopping only the parent left the pipe
+        # open and the app waiting for the whole camera search.
+        import subprocess
+
+        script = (
+            "import subprocess, sys, time;"
+            "subprocess.Popen([sys.executable, '-c', 'import time; print(1, flush=True); time.sleep(60)']);"
+            "time.sleep(60)"
+        )
+        process = subprocess.Popen(
+            [sys.executable, "-c", script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        )
+        self.assertEqual(process.stdout.readline().strip(), "1")  # the child is running
+        started = time.monotonic()
+        wifi_transfer.kill_process_tree(process)
+        process.stdout.read()  # returns only when every writer is gone
+        process.stdout.close()
+        self.assertLess(time.monotonic() - started, 10)
+        process.wait(5)
+
+
 if __name__ == "__main__":
     unittest.main()

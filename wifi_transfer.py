@@ -312,6 +312,27 @@ class Settings:
 
 
 
+def kill_process_tree(process: "subprocess.Popen[str]") -> None:
+    """Stop the backend and everything it started.
+
+    The bundled ``airmtp-backend.exe`` is a PyInstaller one-file program: it
+    runs the real backend in a child process.  Terminating only the parent
+    left that child searching for the camera and holding the output pipe
+    open, so Stop appeared to do nothing.
+    """
+
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            capture_output=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if process.poll() is None:
+            process.kill()
+    else:
+        process.terminate()
+
+
 @dataclass
 class TransferOptions:
     mode: str = "ptpip"  # "ptpip" (home network) or "direct" (Sony XPush)
@@ -354,15 +375,16 @@ class WifiTransfer:
         self.worker = threading.Thread(target=target, args=(destination, deadline), daemon=True)
         self.worker.start()
 
-    def stop(self) -> None:
+    def stop(self, *, quiet: bool = False) -> None:
         # Set the flag first so a worker that is waiting to retry the camera
         # search stops instead of starting another attempt.
         self.cancel_requested.set()
         process = self.backend_process
         if process and process.poll() is None:
-            process.terminate()
-        key = "stopped_network" if self.options.mode == "ptpip" else "stopping_direct"
-        self.events.put(("log", self.t(key)))
+            kill_process_tree(process)
+        if not quiet:
+            key = "stopped_network" if self.options.mode == "ptpip" else "stopping_direct"
+            self.events.put(("log", self.t(key)))
 
     def _pause_before_camera_retry(
         self,
@@ -658,7 +680,7 @@ class WifiTransfer:
         )
         if self.cancel_requested.is_set():
             # Stop was pressed while the process was being created.
-            self.backend_process.terminate()
+            kill_process_tree(self.backend_process)
         assert self.backend_process.stdout is not None
         parser = BackendOutputParser()
         current = 0

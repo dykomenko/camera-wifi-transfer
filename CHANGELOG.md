@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1-beta — 2026-11-15
+
+- Fixed **Stop** for Wi-Fi downloads doing nothing for a long time: the bundled `airmtp-backend.exe` runs the real backend in a child process, and only the parent was terminated, so the search went on and the app kept waiting for it. Stop now ends the whole process tree (measured: 0.2 s) and the window shows "Stopping…" right away; a stopped run is reported as "Stopped", not as an error.
+- Inserting a memory card while the app is only **searching** for the camera over Wi-Fi now stops that search and opens the memory-card tab, so the card can be moved at once. A Wi-Fi download that is already copying files is never interrupted; the card button then explains that it has to finish first.
+
 ## 0.5.0-beta — 2026-11-15
 
 - **One program, new interface.** Camera Wi-Fi Transfer and Camera Card Mover are merged into **Camera Transfer** (`Camera Transfer.exe`) with two tabs: **Over Wi-Fi** and **From memory card**. The window is drawn with HTML/CSS through Microsoft Edge WebView2: Windows 11 look, follows the light/dark theme, clearly highlighted tabs, a status card, a single main button and a folded log.

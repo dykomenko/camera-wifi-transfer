@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $BuildRoot = Join-Path $ProjectRoot "build-output"
 $Artifacts = Join-Path $ProjectRoot "artifacts"
-$PackageName = "Camera-Transfer-0.5.0-beta"
+$PackageName = "Camera-Transfer-0.5.1-beta"
 $Package = Join-Path $BuildRoot $PackageName
 
 Push-Location $ProjectRoot

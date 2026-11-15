@@ -105,6 +105,48 @@ class StartupTests(unittest.TestCase):
         self.assertEqual(result["title"], "No file types selected")
 
 
+class CardWhileWifiTests(StartupTests):
+    def _ready_card(self) -> object:
+        return mock.Mock(files=[mock.Mock(kind="photo")], total_bytes=1024)
+
+    def _insert_card(self, app: ct.CameraTransferApp) -> None:
+        with mock.patch.object(card_mover_core, "find_sony_cards", return_value=["G:\\"]), mock.patch.object(
+            card_mover_core, "open_card", return_value=self._ready_card()
+        ):
+            app._scan_cards()
+
+    def _events(self, app: ct.CameraTransferApp) -> list:
+        events = []
+        while not app.outbox.empty():
+            events.append(app.outbox.get_nowait())
+        return events
+
+    def test_inserting_a_card_stops_a_camera_search(self) -> None:
+        app = self._app([])
+        with mock.patch.object(type(app.wifi), "running", new_callable=mock.PropertyMock) as running,                 mock.patch.object(app.wifi, "stop") as stop:
+            running.side_effect = [True, True, False, False]
+            self._insert_card(app)
+        stop.assert_called_once_with(quiet=True)
+        self.assertIn(["switch_tab", "card"], self._events(app))
+
+    def test_a_running_download_is_not_interrupted_by_a_card(self) -> None:
+        app = self._app([])
+        app.wifi_transferring = True
+        with mock.patch.object(type(app.wifi), "running", new_callable=mock.PropertyMock, return_value=True),                 mock.patch.object(app.wifi, "stop") as stop:
+            self._insert_card(app)
+            result = ct.Api(app).move_card()
+        stop.assert_not_called()
+        self.assertNotIn(["switch_tab", "card"], self._events(app))
+        self.assertFalse(result["ok"])
+        self.assertIn("Wi-Fi download", result["message"])
+
+    def test_stopped_run_is_reported_as_stopped_not_failed(self) -> None:
+        summary = ct.wifi_summary(Translator("en"), {"success": False, "downloaded": 0, "skipped": 0}, 0, True,
+                                  "C:/x", cancelled=True)
+        self.assertEqual(summary["headline"], "Stopped")
+        self.assertTrue(summary["cancelled"])
+
+
 class InterfaceTextTests(unittest.TestCase):
     def test_every_text_the_window_uses_exists_in_every_language(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")

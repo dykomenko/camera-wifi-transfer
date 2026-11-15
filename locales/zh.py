@@ -151,4 +151,7 @@ MESSAGES: dict[str, str] = {
     "ui_cancel": "取消",
     "ui_open_folder": "打开文件夹",
     "ui_webview_missing": "显示此窗口需要 Microsoft Edge WebView2 Runtime。请从 microsoft.com 安装（搜索“WebView2 Runtime”）后重新启动程序。",
+    "ui_stopping": "正在停止…",
+    "ui_stopped": "已停止",
+    "ui_wifi_search_stopped_for_card": "已插入存储卡，因此已停止通过 Wi-Fi 查找相机。",
 }
