@@ -12,8 +12,8 @@ android {
         applicationId = "com.dykomenko.cameratransfer"
         minSdk = 29
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.3.0-beta"
+        versionCode = 4
+        versionName = "0.4.0-beta"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
@@ -34,6 +34,11 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+dependencies {
+    // QR scanner for the code a Sony camera shows on its "Send to Smartphone" screen.
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 }
 
 // The camera code is shared with the desktop app: copy it from the

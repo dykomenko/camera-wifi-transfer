@@ -26,5 +26,8 @@
     <string name="nfc_camera">NFC: %1$s, network %2$s</string>
     <string name="nfc_not_sony">This NFC tag is not a Sony camera.</string>
     <string name="permission_needed">Allow access to nearby Wi-Fi devices so the app can join the camera\'s network.</string>
-    <string name="hint_nfc">Or: open a photo on the camera, then touch the phone to the N mark.</string>
+    <string name="hint_nfc">Or: on the camera choose Send to Smartphone, then scan its QR code or, with this app open on screen, touch the phone to the N mark.</string>
+    <string name="scan_qr">Scan QR from camera</string>
+    <string name="qr_prompt">Point at the QR code on the camera\'s Send to Smartphone screen</string>
+    <string name="qr_not_camera">This QR code has no camera Wi-Fi details.</string>
 </resources>

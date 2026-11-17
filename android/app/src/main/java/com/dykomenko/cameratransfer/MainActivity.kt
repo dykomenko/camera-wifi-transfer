@@ -33,6 +33,8 @@ import android.widget.GridView
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.content.Intent
+import com.google.zxing.integration.android.IntentIntegrator
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import org.json.JSONObject
@@ -67,6 +69,20 @@ fun parseSonyNfc(payload: ByteArray): CameraWifi? {
     val ssid = ssidAndModel?.substringBefore(':') ?: return null
     if (!ssid.startsWith("DIRECT-") || password.isNullOrEmpty()) return null
     return CameraWifi(ssid, password, ssidAndModel.substringAfter(':', ""))
+}
+
+/**
+ * Wi-Fi details from the QR code on the camera's "Send to Smartphone"
+ * screen.  Sony uses "W01:S:<ssid>;P:<password>;C:<model>;M:<mac>;"; the
+ * standard "WIFI:S:<ssid>;T:WPA;P:<password>;;" is accepted too.
+ */
+fun parseCameraQr(text: String): CameraWifi? {
+    val body = text.trim().substringAfter("WIFI:", text.trim())
+    val ssid = Regex("""(?:^|[;:])S:([^;]+)""").find(body)?.groupValues?.get(1) ?: return null
+    val password = Regex("""(?:^|;)P:([^;]+)""").find(body)?.groupValues?.get(1) ?: return null
+    val model = Regex("""(?:^|;)C:([^;]+)""").find(body)?.groupValues?.get(1) ?: ""
+    if (ssid.isEmpty() || password.isEmpty()) return null
+    return CameraWifi(ssid, password, model)
 }
 
 data class CameraFile(
@@ -144,6 +160,15 @@ class MainActivity : Activity() {
         connectButton = findViewById(R.id.connect)
         connectDirectButton = findViewById(R.id.connect_direct)
         connectDirectButton.setOnClickListener { savedCameraWifi()?.let { connectDirect(it) } }
+        findViewById<Button>(R.id.scan_qr).setOnClickListener {
+            if (busy || connected) return@setOnClickListener
+            IntentIntegrator(this)
+                .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
+                .setPrompt(getString(R.string.qr_prompt))
+                .setBeepEnabled(false)
+                .setOrientationLocked(false)
+                .initiateScan()
+        }
         status.text = getString(R.string.hint_idle) + System.lineSeparator() + getString(R.string.hint_nfc)
         progress = findViewById(R.id.progress)
         grid = findViewById(R.id.grid)
@@ -213,17 +238,42 @@ class MainActivity : Activity() {
                 status.text = getString(R.string.nfc_not_sony)
                 return@post
             }
-            getPreferences(Context.MODE_PRIVATE).edit()
-                .putString("camera_ssid", wifi.ssid)
-                .putString("camera_password", wifi.password)
-                .putString("camera_model", wifi.model)
-                .apply()
-            refreshSelection()
+            rememberCameraWifi(wifi)
             if (!busy && !connected) {
                 status.text = getString(R.string.nfc_camera, wifi.model, wifi.ssid)
                 connectDirect(wifi)
             }
         }
+    }
+
+    @Deprecated("Activity result API of the plain framework Activity")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        val scan = IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
+        if (scan == null) {
+            super.onActivityResult(requestCode, resultCode, data)
+            return
+        }
+        val text = scan.contents ?: return
+        // Log only the shape of the code, never the password.
+        android.util.Log.i("CameraTransferQr", "field keys=" + text.split(';').map { it.substringBeforeLast(':', "") }
+            .map { it.takeLast(1) })
+        val wifi = parseCameraQr(text)
+        if (wifi == null) {
+            status.text = getString(R.string.qr_not_camera)
+            return
+        }
+        rememberCameraWifi(wifi)
+        status.text = getString(R.string.nfc_camera, wifi.model, wifi.ssid)
+        connectDirect(wifi)
+    }
+
+    private fun rememberCameraWifi(wifi: CameraWifi) {
+        getPreferences(Context.MODE_PRIVATE).edit()
+            .putString("camera_ssid", wifi.ssid)
+            .putString("camera_password", wifi.password)
+            .putString("camera_model", wifi.model)
+            .apply()
+        refreshSelection()
     }
 
     private fun savedCameraWifi(): CameraWifi? {

@@ -25,5 +25,8 @@
     <string name="nfc_camera">NFC: %1$s, сеть %2$s</string>
     <string name="nfc_not_sony">Эта NFC-метка не от камеры Sony.</string>
     <string name="permission_needed">Разрешите доступ к устройствам Wi-Fi поблизости, чтобы приложение могло подключиться к сети камеры.</string>
-    <string name="hint_nfc">Или: откройте снимок на камере и приложите телефон к метке N.</string>
+    <string name="hint_nfc">Или: выберите на камере «Отправить на смартфон», затем отсканируйте её QR-код или, держа это приложение открытым на экране, приложите телефон к метке N.</string>
+    <string name="scan_qr">QR-код с камеры</string>
+    <string name="qr_prompt">Наведите на QR-код на экране «Отправить на смартфон» камеры</string>
+    <string name="qr_not_camera">В этом QR-коде нет данных Wi-Fi камеры.</string>
 </resources>
