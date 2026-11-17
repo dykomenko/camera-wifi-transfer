@@ -82,8 +82,14 @@ fun parseCameraQr(text: String): CameraWifi? {
     val password = Regex("""(?:^|;)P:([^;]+)""").find(body)?.groupValues?.get(1) ?: return null
     val model = Regex("""(?:^|;)C:([^;]+)""").find(body)?.groupValues?.get(1) ?: ""
     if (ssid.isEmpty() || password.isEmpty()) return null
-    return CameraWifi(ssid, password, model)
+    // Sony's code carries only the part after "DIRECT-" (seen on an a6500:
+    // S:dKE1 for the network DIRECT-dKE1, which the NFC tag names in full).
+    val sony = text.trim().startsWith("W01:")
+    return CameraWifi(if (sony) cameraSsid(ssid) else ssid, password, model)
 }
+
+/** Sony camera networks are always "DIRECT-…". */
+fun cameraSsid(ssid: String) = if (ssid.startsWith("DIRECT-")) ssid else "DIRECT-$ssid"
 
 data class CameraFile(
     val index: Int,
@@ -278,7 +284,8 @@ class MainActivity : Activity() {
 
     private fun savedCameraWifi(): CameraWifi? {
         val prefs = getPreferences(Context.MODE_PRIVATE)
-        val ssid = prefs.getString("camera_ssid", null) ?: return null
+        // cameraSsid() also repairs a name saved by 0.4.x without "DIRECT-".
+        val ssid = cameraSsid(prefs.getString("camera_ssid", null) ?: return null)
         val password = prefs.getString("camera_password", null) ?: return null
         return CameraWifi(ssid, password, prefs.getString("camera_model", "") ?: "")
     }
