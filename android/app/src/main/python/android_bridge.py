@@ -179,6 +179,15 @@ def connect_direct(wait_seconds, diag_path=""):
     # calls.  Asking for the list first makes the camera answer 506.
     _fetch_device_info(client.host)
 
+    # "Send this image" mode: the camera offers the picture it is showing in
+    # DigitalImagingDesc.xml (X_CurrentContent_URL).  The catalogue and
+    # X_TransferStart are not available then (they answer UPnP 506).
+    current = _read_current_content(client)
+    if current is not None:
+        _direct = client
+        _items = [current]
+        return _direct_listing(client, descriptor)
+
     items = None
     failures = []
     try:
@@ -214,6 +223,10 @@ def connect_direct(wait_seconds, diag_path=""):
         raise SonySoapError("; ".join(dict.fromkeys(failures)) or "the camera lists no pictures")
     _direct = client
     _items = items
+    return _direct_listing(client, descriptor)
+
+
+def _direct_listing(client, descriptor):
     return json.dumps({
         "ip": client.host,
         "model": descriptor.model_name or descriptor.friendly_name or "Sony",
@@ -232,6 +245,73 @@ def connect_direct(wait_seconds, diag_path=""):
             for item in _items
         ],
     })
+
+
+_SONY_HEADERS = {
+    "User-Agent": "UPnP/1.0 DLNADOC/1.50",
+    "X-AV-Client-Info": 'av=5.0; hn=""; cn="Sony Corp."; mn="PMlib"; mv="2.8.1";',
+    "Connection": "close",
+}
+_PROFILE_ORDER = ("JPEG_LRG", "JPEG_SM", "JPEG_TN")  # best first
+
+
+class _CurrentContent:
+    """The one picture a camera in "send this image" mode offers.
+
+    The camera names it after the original (DSC04117.ARW) but serves JPEG
+    renditions of it (thumbnail, small, large); the original RAW is not
+    offered in this mode.
+    """
+
+    def __init__(self, stem, urls):
+        self.title = stem + ".JPG"
+        self.urls = urls  # profile id -> url
+        self.size = 0
+
+    def best_url(self):
+        for profile in _PROFILE_ORDER:
+            if profile in self.urls:
+                return self.urls[profile]
+        return next(iter(self.urls.values()))
+
+
+def _read_current_content(client):
+    import xml.etree.ElementTree as ET
+    import urllib.request
+
+    try:
+        raw = client._request_bytes("GET", client.base_url + "/DigitalImagingDesc.xml")
+        root = ET.fromstring(raw)
+    except Exception as error:
+        _diag("DigitalImagingDesc.xml unreadable:", error)
+        return None
+    urls = {}
+    stem = None
+    for element in root.iter():
+        if sony_soap._local_name(element.tag) != "X_CurrentContent_URL_URL":
+            continue
+        url = (element.text or "").strip()
+        if not url:
+            continue
+        urls[element.attrib.get("profileID", "")] = url
+        name = url.split("?")[0].rsplit("/", 1)[-1]  # LRG_DSC04117.ARW
+        name = re.sub(r"^(TN|SM|LRG)_", "", name)
+        stem = name.rsplit(".", 1)[0]
+    if not urls or not stem:
+        _diag("no current content offered")
+        return None
+    item = _CurrentContent(stem, urls)
+    # Size for the progress bar: ask the camera for the headers only.
+    for method in ("HEAD", "GET"):
+        try:
+            request = urllib.request.Request(item.best_url(), headers=_SONY_HEADERS, method=method)
+            with urllib.request.urlopen(request, timeout=15) as response:
+                item.size = int(response.headers.get("Content-Length") or 0)
+            break
+        except Exception as error:
+            _diag("size", method, "failed:", error)
+    _diag("current content:", item.title, sorted(urls), "size", item.size)
+    return item
 
 
 def _run_probe_script(client):
@@ -479,9 +559,20 @@ def _smallest_resource(item):
     return min(pool, key=lambda r: (r.size or 1 << 40, r.pixel_count or 1 << 40))
 
 
+def _fetch(url):
+    import urllib.request
+
+    request = urllib.request.Request(url, headers=_SONY_HEADERS)
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return response.read()
+
+
 def thumbnail(index):
     if _direct is not None:
-        resource = _smallest_resource(_items[int(index)])
+        item = _items[int(index)]
+        if isinstance(item, _CurrentContent):
+            return _fetch(item.urls.get("JPEG_TN") or item.best_url())
+        resource = _smallest_resource(item)
         return _direct._request_bytes("GET", _direct._camera_url(resource.url))
     return _require().thumbnail(_files[int(index)])
 
@@ -497,12 +588,37 @@ def download(index, target, listener):
         if os.path.exists(target):
             os.remove(target)
         expected = item.size or 0
+        if isinstance(item, _CurrentContent):
+            return _download_url(item.best_url(), target, expected, listener)
         path = _direct.download(
             item, target, progress_cb=lambda done, total=None: listener.onProgress(done, total or expected)
         )
         return str(path)
     item = _files[int(index)]
     return _require().download(item, target, lambda done, total: listener.onProgress(done, total))
+
+
+def _download_url(url, target, expected, listener):
+    import urllib.request
+
+    request = urllib.request.Request(url, headers=_SONY_HEADERS)
+    part = target + ".part"
+    done = 0
+    with urllib.request.urlopen(request, timeout=30) as response:
+        total = int(response.headers.get("Content-Length") or expected or 0)
+        with open(part, "wb") as handle:
+            while True:
+                block = response.read(256 * 1024)
+                if not block:
+                    break
+                handle.write(block)
+                done += len(block)
+                listener.onProgress(done, total or done)
+    if total and done != total:
+        os.remove(part)
+        raise SonySoapError(f"download cut short: {done} of {total} bytes")
+    os.replace(part, target)
+    return target
 
 
 def is_connected():

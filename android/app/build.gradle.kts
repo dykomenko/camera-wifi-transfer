@@ -12,8 +12,8 @@ android {
         applicationId = "com.dykomenko.cameratransfer"
         minSdk = 29
         targetSdk = 34
-        versionCode = 14
-        versionName = "0.4.10-beta"
+        versionCode = 15
+        versionName = "0.4.11-beta"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
