@@ -336,6 +336,8 @@ class MainActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val connectivity = getSystemService(ConnectivityManager::class.java)
         releaseCameraNetwork()
+        // Plain text log of what the camera answered, for troubleshooting.
+        val diagPath = File(getExternalFilesDir(null) ?: filesDir, "camera-direct.log").absolutePath
         val specifier = WifiNetworkSpecifier.Builder()
             .setSsid(wifi.ssid)
             .setWpa2Passphrase(wifi.password)
@@ -348,11 +350,12 @@ class MainActivity : Activity() {
         var started = false
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
+                android.util.Log.i("CameraTransfer", "camera network available: $network")
                 connectivity.bindProcessToNetwork(network)
                 if (started) return
                 started = true
                 worker.execute {
-                    val result = runCatching { bridge.callAttr("connect_direct", 20).toString() }
+                    val result = runCatching { bridge.callAttr("connect_direct", 20, diagPath).toString() }
                     main.post {
                         progress.visibility = View.GONE
                         setBusy(false)
@@ -368,6 +371,7 @@ class MainActivity : Activity() {
             }
 
             override fun onUnavailable() {
+                android.util.Log.w("CameraTransfer", "camera network unavailable (not found, refused or timed out)")
                 main.post {
                     progress.visibility = View.GONE
                     setBusy(false)
@@ -377,6 +381,7 @@ class MainActivity : Activity() {
             }
 
             override fun onLost(network: Network) {
+                android.util.Log.w("CameraTransfer", "camera network lost: $network")
                 main.post {
                     if (connected && direct) {
                         connected = false

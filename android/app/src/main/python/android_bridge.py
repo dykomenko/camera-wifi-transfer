@@ -129,34 +129,80 @@ def connect(work_dir, ip_address, interfaces_csv, attempts_per_interface, last_i
     })
 
 
-def connect_direct(wait_seconds):
+_diag_path = None
+
+
+def _diag(*parts):
+    """Log to logcat and to a file that can be pulled with adb."""
+
+    line = " ".join(str(p) for p in parts)
+    print("camera-direct:", line)
+    if _diag_path:
+        try:
+            with open(_diag_path, "a", encoding="utf-8") as handle:
+                handle.write(time.strftime("%H:%M:%S ") + line + "\n")
+        except OSError:
+            pass
+
+
+def connect_direct(wait_seconds, diag_path=""):
     """Connect to a camera in "Send to Smartphone" mode on its own Wi-Fi.
 
     The activity has already joined the camera's network and bound the app
     to it; the camera's web server can need a few seconds to answer.
     """
 
-    global _direct, _items
+    global _direct, _items, _diag_path
     close()
+    _diag_path = diag_path or None
+    if _diag_path:
+        try:
+            os.remove(_diag_path)
+        except OSError:
+            pass
     client = SonySoapClient(timeout=10.0)
     deadline = time.time() + float(wait_seconds)
     while True:
         try:
             descriptor = client.probe()
             break
-        except SonySoapError:
+        except SonySoapError as error:
+            _diag("probe not answered yet:", error)
             if time.time() > deadline:
                 raise
             time.sleep(1.0)
+    _diag("camera:", descriptor.manufacturer, descriptor.model_name, descriptor.friendly_name)
     _log_services(client)
-    try:
-        client.start_transfer()
-    except SonySoapError as error:
-        # Not every model wants (or accepts) X_TransferStart; try browsing
-        # anyway and only fail if that does not work either.
-        print("camera-direct: X_TransferStart rejected:", error)
+
+    items = None
+    failures = []
+    # "Select on Smartphone" browses PhotoRoot right away; the push variant
+    # ("Select on camera") needs X_TransferStart first.  Which one this
+    # camera is in is not known up front, so try both orders.
+    for use_push in (False, True):
+        if use_push:
+            try:
+                client.start_transfer()
+                _diag("X_TransferStart ok")
+            except SonySoapError as error:
+                _diag("X_TransferStart rejected:", error)
+                failures.append(f"TransferStart: {error}")
+        for browse_root in ("PhotoRoot", "PushRoot", "0"):
+            try:
+                items = client._browse_tree(browse_root)
+                _diag(f"browse {browse_root} (push={use_push}): {len(items)} items")
+                if items:
+                    break
+            except SonySoapError as error:
+                _diag(f"browse {browse_root} (push={use_push}) failed:", error)
+                failures.append(f"{browse_root}: {error}")
+        if items:
+            break
+    if not items:
+        _probe_more(client)
+        raise SonySoapError("; ".join(dict.fromkeys(failures)) or "the camera lists no pictures")
     _direct = client
-    _items = _browse_direct(client)
+    _items = items
     return json.dumps({
         "ip": client.host,
         "model": descriptor.model_name or descriptor.friendly_name or "Sony",
@@ -177,56 +223,74 @@ def connect_direct(wait_seconds):
     })
 
 
-def _browse_direct(client):
-    errors = []
-    for root in ("PushRoot", "PhotoRoot", "0"):
+def _probe_more(client):
+    """Extra read-only queries, logged to find what state the camera wants."""
+
+    import sony_soap
+
+    def call(label, url, service, action, args=()):
         try:
-            items = client._browse_tree(root)
-            print(f"camera-direct: browse {root}: {len(items)} items")
-            if items or root == "0":
-                return items
-        except SonySoapError as error:
-            print(f"camera-direct: browse {root} failed:", error)
-            errors.append(f"{root}: {error}")
-    raise SonySoapError("camera rejected every browse: " + "; ".join(errors))
+            reply = client._soap_request(url, service, action, args)
+            _diag(label, "->", reply.decode("utf-8", "replace").replace("\\n", " ")[:700])
+        except Exception as error:  # diagnostics only
+            _diag(label, "failed:", error)
+
+    push = client._xpush_control_url
+    content = client._content_control_url
+    call("X_GetPushRoot", push, sony_soap.XPUSH_SERVICE, "X_GetPushRoot")
+    call("GetSystemUpdateID", content, sony_soap.CONTENT_DIRECTORY_SERVICE, "GetSystemUpdateID")
+    for object_id in ("0", "PhotoRoot", "PushRoot"):
+        call(
+            f"BrowseMetadata {object_id}", content, sony_soap.CONTENT_DIRECTORY_SERVICE, "Browse",
+            (("ObjectID", object_id), ("BrowseFlag", "BrowseMetadata"), ("Filter", "*"),
+             ("StartingIndex", "0"), ("RequestedCount", "1"), ("SortCriteria", "")),
+        )
+    try:
+        raw = client._request_bytes("GET", client.base_url + "/DigitalImagingDesc.xml")
+        _diag("DigitalImagingDesc.xml:", raw.decode("utf-8", "replace").replace("\\n", " ")[:1500])
+    except Exception as error:
+        _diag("DigitalImagingDesc.xml failed:", error)
 
 
 def _log_services(client):
-    """Print the camera's services and their actions to logcat (python.stdout).
-
-    The "Send to Smartphone" protocol differs between models, so the log
-    shows what this camera actually offers.  None of it is secret.
-    """
+    """Log the camera's services and their actions (nothing secret in them)."""
 
     import xml.etree.ElementTree as ET
     from sony_soap import _first_text, _local_name
 
-    try:
-        root = ET.fromstring(client._request_bytes("GET", client.base_url + "/DmsDescPush.xml"))
-    except Exception as error:  # diagnostics only
-        print("camera-direct: descriptor failed:", error)
-        return
-    for service in root.iter():
-        if _local_name(service.tag) != "service":
-            continue
-        kind = _first_text(service, "serviceType")
-        scpd = _first_text(service, "SCPDURL")
-        print("camera-direct: service", kind, "control", _first_text(service, "controlURL"), "scpd", scpd)
-        if not scpd:
-            continue
+    for path in ("/DmsDescPush.xml", "/DmsDesc.xml"):
         try:
-            doc = ET.fromstring(client._request_bytes("GET", client._camera_url(scpd)))
-        except Exception as error:
-            print("camera-direct:   scpd failed:", error)
+            raw = client._request_bytes("GET", client.base_url + path)
+        except Exception as error:  # diagnostics only
+            _diag(path, "not available:", error)
             continue
-        for action in doc.iter():
-            if _local_name(action.tag) != "action":
+        _diag(path, "ok,", len(raw), "bytes")
+        try:
+            doc_root = ET.fromstring(raw)
+        except ET.ParseError as error:
+            _diag(path, "not XML:", error)
+            continue
+        for service in doc_root.iter():
+            if _local_name(service.tag) != "service":
                 continue
-            args = [
-                f"{_first_text(arg, 'direction')}:{_first_text(arg, 'name')}"
-                for arg in action.iter() if _local_name(arg.tag) == "argument"
-            ]
-            print("camera-direct:   action", _first_text(action, "name"), args)
+            kind = _first_text(service, "serviceType")
+            scpd = _first_text(service, "SCPDURL")
+            _diag(" service", kind, "control", _first_text(service, "controlURL"), "scpd", scpd)
+            if not scpd:
+                continue
+            try:
+                doc = ET.fromstring(client._request_bytes("GET", client._camera_url(scpd)))
+            except Exception as error:
+                _diag("  scpd failed:", error)
+                continue
+            for action in doc.iter():
+                if _local_name(action.tag) != "action":
+                    continue
+                args = [
+                    f"{_first_text(arg, 'direction')}:{_first_text(arg, 'name')}"
+                    for arg in action.iter() if _local_name(arg.tag) == "argument"
+                ]
+                _diag("  action", _first_text(action, "name"), args)
 
 
 def _smallest_resource(item):
