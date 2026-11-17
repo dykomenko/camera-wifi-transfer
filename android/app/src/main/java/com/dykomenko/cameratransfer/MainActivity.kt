@@ -113,6 +113,9 @@ class ProgressListener(private val onProgress: (Long, Long) -> Unit) {
 class MainActivity : Activity() {
     companion object {
         private const val QR_REQUEST = 4711
+        // Sent by the NFC stand-in app (package com.sony.playmemories.mobile).
+        private const val ACTION_CAMERA_NFC = "com.dykomenko.cameratransfer.CAMERA_NFC"
+        private const val EXTRA_PMM = "sony_pmm"
     }
 
     // Every call into Python runs on this one thread, in order.
@@ -203,6 +206,20 @@ class MainActivity : Activity() {
         }
         downloadButton.setOnClickListener { downloadSelected() }
         refreshSelection()
+        handleForwardedNfc(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleForwardedNfc(intent)
+    }
+
+    /** The camera's tag, read while this app was closed, via the NFC stand-in app. */
+    private fun handleForwardedNfc(intent: Intent?) {
+        if (intent?.action != ACTION_CAMERA_NFC) return
+        val payload = intent.getByteArrayExtra(EXTRA_PMM)
+        intent.action = null  // not again after a rotation
+        onCameraWifi(payload?.let { parseSonyNfc(it) })
     }
 
     // ---------------------------------------------------------------- nfc
@@ -242,16 +259,18 @@ class MainActivity : Activity() {
                 ?.firstOrNull { String(it.type, Charsets.ISO_8859_1) == "application/x-sony-pmm" }
                 ?.let { parseSonyNfc(it.payload) }
         }.getOrNull()
-        main.post {
-            if (wifi == null) {
-                status.text = getString(R.string.nfc_not_sony)
-                return@post
-            }
-            rememberCameraWifi(wifi)
-            if (!busy && !connected) {
-                status.text = getString(R.string.nfc_camera, wifi.model, wifi.ssid)
-                connectDirect(wifi)
-            }
+        main.post { onCameraWifi(wifi) }
+    }
+
+    private fun onCameraWifi(wifi: CameraWifi?) {
+        if (wifi == null) {
+            status.text = getString(R.string.nfc_not_sony)
+            return
+        }
+        rememberCameraWifi(wifi)
+        if (!busy && !connected) {
+            status.text = getString(R.string.nfc_camera, wifi.model, wifi.ssid)
+            connectDirect(wifi)
         }
     }
 
@@ -341,7 +360,8 @@ class MainActivity : Activity() {
                         result.onFailure { error ->
                             android.util.Log.w("CameraTransfer", "direct connect failed", error)
                             releaseCameraNetwork()
-                            status.text = getString(R.string.camera_wifi_failed)
+                            val reason = (error.message ?: error.toString()).lineSequence().first().take(200)
+                            status.text = getString(R.string.camera_wifi_failed) + System.lineSeparator() + reason
                         }
                     }
                 }

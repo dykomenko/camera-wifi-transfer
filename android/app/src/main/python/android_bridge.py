@@ -148,9 +148,15 @@ def connect_direct(wait_seconds):
             if time.time() > deadline:
                 raise
             time.sleep(1.0)
-    client.start_transfer()
+    _log_services(client)
+    try:
+        client.start_transfer()
+    except SonySoapError as error:
+        # Not every model wants (or accepts) X_TransferStart; try browsing
+        # anyway and only fail if that does not work either.
+        print("camera-direct: X_TransferStart rejected:", error)
     _direct = client
-    _items = client.browse_all()
+    _items = _browse_direct(client)
     return json.dumps({
         "ip": client.host,
         "model": descriptor.model_name or descriptor.friendly_name or "Sony",
@@ -169,6 +175,58 @@ def connect_direct(wait_seconds):
             for item in _items
         ],
     })
+
+
+def _browse_direct(client):
+    errors = []
+    for root in ("PushRoot", "PhotoRoot", "0"):
+        try:
+            items = client._browse_tree(root)
+            print(f"camera-direct: browse {root}: {len(items)} items")
+            if items or root == "0":
+                return items
+        except SonySoapError as error:
+            print(f"camera-direct: browse {root} failed:", error)
+            errors.append(f"{root}: {error}")
+    raise SonySoapError("camera rejected every browse: " + "; ".join(errors))
+
+
+def _log_services(client):
+    """Print the camera's services and their actions to logcat (python.stdout).
+
+    The "Send to Smartphone" protocol differs between models, so the log
+    shows what this camera actually offers.  None of it is secret.
+    """
+
+    import xml.etree.ElementTree as ET
+    from sony_soap import _first_text, _local_name
+
+    try:
+        root = ET.fromstring(client._request_bytes("GET", client.base_url + "/DmsDescPush.xml"))
+    except Exception as error:  # diagnostics only
+        print("camera-direct: descriptor failed:", error)
+        return
+    for service in root.iter():
+        if _local_name(service.tag) != "service":
+            continue
+        kind = _first_text(service, "serviceType")
+        scpd = _first_text(service, "SCPDURL")
+        print("camera-direct: service", kind, "control", _first_text(service, "controlURL"), "scpd", scpd)
+        if not scpd:
+            continue
+        try:
+            doc = ET.fromstring(client._request_bytes("GET", client._camera_url(scpd)))
+        except Exception as error:
+            print("camera-direct:   scpd failed:", error)
+            continue
+        for action in doc.iter():
+            if _local_name(action.tag) != "action":
+                continue
+            args = [
+                f"{_first_text(arg, 'direction')}:{_first_text(arg, 'name')}"
+                for arg in action.iter() if _local_name(arg.tag) == "argument"
+            ]
+            print("camera-direct:   action", _first_text(action, "name"), args)
 
 
 def _smallest_resource(item):

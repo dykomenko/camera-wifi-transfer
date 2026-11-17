@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "CameraTransferAndroid"
 include(":app")
+include(":pmm-stub")

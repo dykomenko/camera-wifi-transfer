@@ -307,10 +307,16 @@ def _extract_soap_fault(payload: bytes) -> SoapFault | None:
         return None
     for element in root.iter():
         if _local_name(element.tag) == "Fault":
-            return SoapFault(
-                _first_text(element, "faultcode"),
-                _first_text(element, "faultstring") or _first_text(element, "errorDescription"),
-            )
+            # UPnP puts the real reason in detail/UPnPError, the faultstring
+            # is just "UPnPError".
+            upnp_code = _first_text(element, "errorCode")
+            upnp_text = _first_text(element, "errorDescription")
+            message = _first_text(element, "faultstring") or upnp_text
+            if upnp_code or upnp_text:
+                message = " ".join(part for part in ("UPnPError", upnp_code, upnp_text) if part)
+            fault = SoapFault(_first_text(element, "faultcode"), message)
+            fault.upnp_code = _parse_int(upnp_code)
+            return fault
     return None
 
 
