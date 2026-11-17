@@ -183,8 +183,9 @@ class MainActivity : Activity() {
             @Suppress("DEPRECATION")
             startActivityForResult(Intent(this, QrScanActivity::class.java), QR_REQUEST)
         }
-        status.text = getString(R.string.hint_idle) + System.lineSeparator() + getString(R.string.hint_nfc)
-        progress = findViewById(R.id.progress)
+        findViewById<Button>(R.id.hotspot).setOnClickListener { openHotspotSettings() }
+        status.text = getString(R.string.hint_idle) + System.lineSeparator() + getString(R.string.hint_hotspot)
+        progress =findViewById(R.id.progress)
         grid = findViewById(R.id.grid)
         selection = findViewById(R.id.selection)
         selectAll = findViewById(R.id.select_all)
@@ -220,6 +221,22 @@ class MainActivity : Activity() {
         val payload = intent.getByteArrayExtra(EXTRA_PMM)
         intent.action = null  // not again after a rotation
         onCameraWifi(payload?.let { parseSonyNfc(it) })
+    }
+
+    /**
+     * Apps cannot pick the hotspot's band, so open the phone's own hotspot
+     * screen: there the band is set to 2.4 GHz (the camera has no 5 GHz) and
+     * the hotspot switched on.
+     */
+    private fun openHotspotSettings() {
+        val attempts = listOf(
+            Intent("android.settings.TETHER_SETTINGS"),
+            Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS),
+            Intent(android.provider.Settings.ACTION_SETTINGS),
+        )
+        for (intent in attempts) {
+            if (runCatching { startActivity(intent) }.isSuccess) return
+        }
     }
 
     // ---------------------------------------------------------------- nfc

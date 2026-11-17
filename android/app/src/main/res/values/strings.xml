@@ -32,4 +32,6 @@
     <string name="qr_not_camera">This QR code has no camera Wi-Fi details.</string>
     <string name="qr_tap_hint">Tap the picture to focus and set exposure there</string>
     <string name="close">Close</string>
+    <string name="hotspot">Phone hotspot (2.4 GHz)</string>
+    <string name="hint_hotspot">Away from home: in the hotspot settings set the band to 2.4 GHz and switch the hotspot on, join the camera to it (Wi-Fi settings on the camera), then choose Send to Computer on the camera and press Connect here.</string>
 </resources>

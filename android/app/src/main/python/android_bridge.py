@@ -223,6 +223,50 @@ def connect_direct(wait_seconds, diag_path=""):
     })
 
 
+def _probe_variants(client, url):
+    """Send GetSystemUpdateID in several wire formats: every action fails
+    with UPnP 506, so the request format itself may be what the camera dislikes."""
+
+    import urllib.request
+    import sony_soap
+
+    service = sony_soap.CONTENT_DIRECTORY_SERVICE
+    ns = "http://schemas.xmlsoap.org/soap/envelope/"
+    full = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        f'<s:Envelope xmlns:s="{ns}" s:encodingStyle="{ns}encoding/"><s:Body>'
+        f'<u:GetSystemUpdateID xmlns:u="{service}"></u:GetSystemUpdateID></s:Body></s:Envelope>'
+    ).encode()
+    plain = full.replace(f' s:encodingStyle="{ns}encoding/"'.encode(), b"")
+    selfclosed = full.replace(b"></u:GetSystemUpdateID>", b"/>")
+    action = f'"{service}#GetSystemUpdateID"'
+    ctype = 'text/xml; charset="utf-8"'
+    upnp_ua = "Linux/5.0 UPnP/1.0 CameraTransfer/1.0"
+    variants = [
+        ("baseline", full, {"Content-Type": ctype, "SOAPACTION": action}),
+        ("upnp user-agent", full, {"Content-Type": ctype, "SOAPACTION": action, "User-Agent": upnp_ua}),
+        ("unquoted action", full, {"Content-Type": ctype, "SOAPACTION": action.strip('"')}),
+        ("charset=utf-8 plain", full, {"Content-Type": "text/xml; charset=utf-8", "SOAPACTION": action}),
+        ("no encodingStyle", plain, {"Content-Type": ctype, "SOAPACTION": action}),
+        ("self-closed action", selfclosed, {"Content-Type": ctype, "SOAPACTION": action}),
+        ("keep-alive + ua", full, {"Content-Type": ctype, "SOAPACTION": action, "User-Agent": upnp_ua,
+                                   "Connection": "keep-alive", "Accept": "*/*"}),
+    ]
+    for name, body, headers in variants:
+        try:
+            request = urllib.request.Request(url, data=body, headers=headers, method="POST")
+            with urllib.request.urlopen(request, timeout=8) as response:
+                _diag("variant", name, "-> HTTP", response.status, response.read(300).decode("utf-8", "replace"))
+        except Exception as error:
+            detail = ""
+            if hasattr(error, "read"):
+                try:
+                    detail = error.read(300).decode("utf-8", "replace")
+                except Exception:
+                    pass
+            _diag("variant", name, "failed:", error, detail.replace("\\n", " "))
+
+
 def _probe_more(client):
     """Extra read-only queries, logged to find what state the camera wants."""
 
@@ -237,6 +281,7 @@ def _probe_more(client):
 
     push = client._xpush_control_url
     content = client._content_control_url
+    _probe_variants(client, content)
     call("X_GetPushRoot", push, sony_soap.XPUSH_SERVICE, "X_GetPushRoot")
     call("GetSystemUpdateID", content, sony_soap.CONTENT_DIRECTORY_SERVICE, "GetSystemUpdateID")
     for object_id in ("0", "PhotoRoot", "PushRoot"):
