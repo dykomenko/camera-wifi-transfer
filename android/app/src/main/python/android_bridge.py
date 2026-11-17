@@ -8,13 +8,20 @@ import json
 import socket
 from concurrent.futures import ThreadPoolExecutor
 
+import os
+import time
+
 import airmtp
 from camera_session import CameraSession, SessionError
+from sony_soap import SonySoapClient, SonySoapError
 
 PTPIP_PORT = 15740
+VIDEO_SUFFIXES = (".MP4", ".MOV", ".MTS", ".M2TS", ".AVI")
 
-_session = None
+_session = None  # "Send to Computer" (PTP/IP) session
 _files = []
+_direct = None  # "Send to Smartphone" (camera's own Wi-Fi) client
+_items = []
 
 
 def _port_open(address, timeout):
@@ -122,26 +129,97 @@ def connect(work_dir, ip_address, interfaces_csv, attempts_per_interface, last_i
     })
 
 
+def connect_direct(wait_seconds):
+    """Connect to a camera in "Send to Smartphone" mode on its own Wi-Fi.
+
+    The activity has already joined the camera's network and bound the app
+    to it; the camera's web server can need a few seconds to answer.
+    """
+
+    global _direct, _items
+    close()
+    client = SonySoapClient(timeout=10.0)
+    deadline = time.time() + float(wait_seconds)
+    while True:
+        try:
+            descriptor = client.probe()
+            break
+        except SonySoapError:
+            if time.time() > deadline:
+                raise
+            time.sleep(1.0)
+    client.start_transfer()
+    _direct = client
+    _items = client.browse_all()
+    return json.dumps({
+        "ip": client.host,
+        "model": descriptor.model_name or descriptor.friendly_name or "Sony",
+        "capacity": 0,
+        "free": 0,
+        "label": "",
+        "direct": True,
+        "files": [
+            {
+                "name": item.title,
+                "size": item.size or 0,
+                "captured": "",
+                "raw": False,
+                "video": item.title.upper().endswith(VIDEO_SUFFIXES),
+            }
+            for item in _items
+        ],
+    })
+
+
+def _smallest_resource(item):
+    marked = [r for r in item.resources if "_TN" in r.protocol_info.upper()]
+    pool = marked or list(item.resources)
+    return min(pool, key=lambda r: (r.size or 1 << 40, r.pixel_count or 1 << 40))
+
+
 def thumbnail(index):
+    if _direct is not None:
+        resource = _smallest_resource(_items[int(index)])
+        return _direct._request_bytes("GET", _direct._camera_url(resource.url))
     return _require().thumbnail(_files[int(index)])
 
 
 def download(index, target, listener):
-    """Copy file ``index`` to ``target``; ``listener.onProgress(done, total)``."""
+    """Copy file ``index`` to ``target``; returns the path actually written.
 
+    ``listener.onProgress(done, total)`` reports progress.
+    """
+
+    if _direct is not None:
+        item = _items[int(index)]
+        if os.path.exists(target):
+            os.remove(target)
+        expected = item.size or 0
+        path = _direct.download(
+            item, target, progress_cb=lambda done, total=None: listener.onProgress(done, total or expected)
+        )
+        return str(path)
     item = _files[int(index)]
     return _require().download(item, target, lambda done, total: listener.onProgress(done, total))
 
 
 def is_connected():
+    if _direct is not None:
+        return True
     return _session is not None and _session.connected
 
 
 def close():
-    global _session, _files
+    global _session, _files, _direct, _items
     session, _session, _files = _session, None, []
+    direct, _direct, _items = _direct, None, []
     if session is not None:
         session.close(sleep_camera=True)
+    if direct is not None:
+        try:
+            direct.end_transfer(0)
+        except SonySoapError:
+            pass
 
 
 def _require():

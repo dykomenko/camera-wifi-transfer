@@ -19,4 +19,12 @@
     <string name="on_phone">on phone</string>
     <string name="disconnected">Disconnected. The camera was sent to sleep.</string>
     <string name="connection_lost">Connection to the camera was lost. Press Cancel on the camera, choose Send to Computer again and connect.</string>
+    <string name="connect_direct">Via the camera\'s Wi-Fi</string>
+    <string name="camera_wifi_joining">Joining the camera\'s Wi-Fi %1$s…</string>
+    <string name="camera_wifi_failed">Could not join the camera\'s Wi-Fi. On the camera open a photo in playback (or choose Send to Smartphone), touch the phone to the N mark again, or press the button.</string>
+    <string name="connected_direct">%1$s · %2$d files · camera Wi-Fi, JPEG</string>
+    <string name="nfc_camera">NFC: %1$s, network %2$s</string>
+    <string name="nfc_not_sony">This NFC tag is not a Sony camera.</string>
+    <string name="permission_needed">Allow access to nearby Wi-Fi devices so the app can join the camera\'s network.</string>
+    <string name="hint_nfc">Or: open a photo on the camera, then touch the phone to the N mark.</string>
 </resources>

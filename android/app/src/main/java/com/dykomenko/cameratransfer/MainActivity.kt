@@ -8,7 +8,15 @@ import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import android.net.wifi.WifiNetworkSpecifier
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.net.wifi.WifiManager
+import android.nfc.NfcAdapter
+import android.nfc.Tag
+import android.nfc.tech.Ndef
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -34,6 +42,33 @@ import java.net.NetworkInterface
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 
+/** Wi-Fi details of the camera's own network, from its NFC tag. */
+data class CameraWifi(val ssid: String, val password: String, val model: String)
+
+/**
+ * Sony NFC record "application/x-sony-pmm": a 5-byte header, then entries of
+ * u16 tag + u16 length: 0x1000 "SSID:model", 0x1001 password (big-endian).
+ */
+fun parseSonyNfc(payload: ByteArray): CameraWifi? {
+    var ssidAndModel: String? = null
+    var password: String? = null
+    var i = 5
+    while (i + 4 <= payload.size) {
+        val tag = ((payload[i].toInt() and 0xff) shl 8) or (payload[i + 1].toInt() and 0xff)
+        val length = ((payload[i + 2].toInt() and 0xff) shl 8) or (payload[i + 3].toInt() and 0xff)
+        if (i + 4 + length > payload.size) break
+        val value = String(payload, i + 4, length, Charsets.UTF_8)
+        when (tag) {
+            0x1000 -> ssidAndModel = value
+            0x1001 -> password = value
+        }
+        i += 4 + length
+    }
+    val ssid = ssidAndModel?.substringBefore(':') ?: return null
+    if (!ssid.startsWith("DIRECT-") || password.isNullOrEmpty()) return null
+    return CameraWifi(ssid, password, ssidAndModel.substringAfter(':', ""))
+}
+
 data class CameraFile(
     val index: Int,
     val name: String,
@@ -57,6 +92,9 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var cameraIp: EditText
     private lateinit var connectButton: Button
+    private lateinit var connectDirectButton: Button
+    private var cameraNetworkCallback: ConnectivityManager.NetworkCallback? = null
+    private var direct = false
     private lateinit var progress: ProgressBar
     private lateinit var grid: GridView
     private lateinit var selection: TextView
@@ -104,6 +142,9 @@ class MainActivity : Activity() {
         status = findViewById(R.id.status)
         cameraIp = findViewById(R.id.camera_ip)
         connectButton = findViewById(R.id.connect)
+        connectDirectButton = findViewById(R.id.connect_direct)
+        connectDirectButton.setOnClickListener { savedCameraWifi()?.let { connectDirect(it) } }
+        status.text = getString(R.string.hint_idle) + System.lineSeparator() + getString(R.string.hint_nfc)
         progress = findViewById(R.id.progress)
         grid = findViewById(R.id.grid)
         selection = findViewById(R.id.selection)
@@ -128,11 +169,171 @@ class MainActivity : Activity() {
         refreshSelection()
     }
 
+    // ---------------------------------------------------------------- nfc
+    override fun onResume() {
+        super.onResume()
+        NfcAdapter.getDefaultAdapter(this)?.enableReaderMode(
+            this, { tag -> onNfcTag(tag) },
+            NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_B or NfcAdapter.FLAG_READER_NFC_F or
+                NfcAdapter.FLAG_READER_NFC_V or NfcAdapter.FLAG_READER_NO_PLATFORM_SOUNDS, null)
+    }
+
+    override fun onPause() {
+        NfcAdapter.getDefaultAdapter(this)?.disableReaderMode(this)
+        super.onPause()
+    }
+
+    /** Diagnostic for now: log every NDEF record of the camera's NFC tag. */
+    private fun onNfcTag(tag: Tag) {
+        val lines = mutableListOf("NFC tag ${tag.id.toHex()} techs=${tag.techList.joinToString()}")
+        val ndef = Ndef.get(tag)
+        if (ndef != null) {
+            runCatching {
+                ndef.connect()
+                val message = ndef.ndefMessage ?: ndef.cachedNdefMessage
+                message?.records?.forEachIndexed { i, record ->
+                    lines += "record $i tnf=${record.tnf} type=${String(record.type, Charsets.ISO_8859_1)} " +
+                        "id=${record.id.toHex()} payload(${record.payload.size})=${record.payload.toHex()}"
+                    lines += "record $i text=" + String(record.payload, Charsets.ISO_8859_1)
+                        .map { if (it.code in 32..126) it else '.' }.joinToString("")
+                }
+                ndef.close()
+            }.onFailure { lines += "read failed: $it" }
+        } else {
+            lines += "no NDEF"
+        }
+        lines.forEach { android.util.Log.i("CameraTransferNfc", it) }
+        val wifi = runCatching {
+            Ndef.get(tag)?.cachedNdefMessage?.records
+                ?.firstOrNull { String(it.type, Charsets.ISO_8859_1) == "application/x-sony-pmm" }
+                ?.let { parseSonyNfc(it.payload) }
+        }.getOrNull()
+        main.post {
+            if (wifi == null) {
+                status.text = getString(R.string.nfc_not_sony)
+                return@post
+            }
+            getPreferences(Context.MODE_PRIVATE).edit()
+                .putString("camera_ssid", wifi.ssid)
+                .putString("camera_password", wifi.password)
+                .putString("camera_model", wifi.model)
+                .apply()
+            refreshSelection()
+            if (!busy && !connected) {
+                status.text = getString(R.string.nfc_camera, wifi.model, wifi.ssid)
+                connectDirect(wifi)
+            }
+        }
+    }
+
+    private fun savedCameraWifi(): CameraWifi? {
+        val prefs = getPreferences(Context.MODE_PRIVATE)
+        val ssid = prefs.getString("camera_ssid", null) ?: return null
+        val password = prefs.getString("camera_password", null) ?: return null
+        return CameraWifi(ssid, password, prefs.getString("camera_model", "") ?: "")
+    }
+
+    // ------------------------------------------------- camera's own Wi-Fi
+    private var pendingDirect: CameraWifi? = null
+
+    /**
+     * Join the camera's own network ("Send to Smartphone") with a network
+     * request: Android keeps it for this app although it has no internet,
+     * which is where a plain Wi-Fi connection tends to fall apart.
+     */
+    private fun connectDirect(wifi: CameraWifi) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED) {
+            pendingDirect = wifi
+            status.text = getString(R.string.permission_needed)
+            requestPermissions(arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES), 1)
+            return
+        }
+        setBusy(true)
+        status.text = getString(R.string.camera_wifi_joining, wifi.ssid)
+        progress.isIndeterminate = true
+        progress.visibility = View.VISIBLE
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val connectivity = getSystemService(ConnectivityManager::class.java)
+        releaseCameraNetwork()
+        val specifier = WifiNetworkSpecifier.Builder()
+            .setSsid(wifi.ssid)
+            .setWpa2Passphrase(wifi.password)
+            .build()
+        val request = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .setNetworkSpecifier(specifier)
+            .build()
+        var started = false
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                connectivity.bindProcessToNetwork(network)
+                if (started) return
+                started = true
+                worker.execute {
+                    val result = runCatching { bridge.callAttr("connect_direct", 20).toString() }
+                    main.post {
+                        progress.visibility = View.GONE
+                        setBusy(false)
+                        result.onSuccess { json -> showCamera(JSONObject(json)) }
+                        result.onFailure { error ->
+                            android.util.Log.w("CameraTransfer", "direct connect failed", error)
+                            releaseCameraNetwork()
+                            status.text = getString(R.string.camera_wifi_failed)
+                        }
+                    }
+                }
+            }
+
+            override fun onUnavailable() {
+                main.post {
+                    progress.visibility = View.GONE
+                    setBusy(false)
+                    releaseCameraNetwork()
+                    status.text = getString(R.string.camera_wifi_failed)
+                }
+            }
+
+            override fun onLost(network: Network) {
+                main.post {
+                    if (connected && direct) {
+                        connected = false
+                        direct = false
+                        connectButton.text = getString(R.string.connect)
+                        status.text = getString(R.string.camera_wifi_failed)
+                        releaseCameraNetwork()
+                        refreshSelection()
+                    }
+                }
+            }
+        }
+        cameraNetworkCallback = callback
+        connectivity.requestNetwork(request, callback, 60_000)
+    }
+
+    private fun releaseCameraNetwork() {
+        val connectivity = getSystemService(ConnectivityManager::class.java)
+        cameraNetworkCallback?.let { runCatching { connectivity.unregisterNetworkCallback(it) } }
+        cameraNetworkCallback = null
+        runCatching { connectivity.bindProcessToNetwork(null) }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        val wifi = pendingDirect ?: return
+        pendingDirect = null
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) connectDirect(wifi)
+    }
+
+    private fun ByteArray.toHex() = joinToString("") { "%02x".format(it) }
+
     override fun onDestroy() {
         thumbnailJob?.cancel(true)
         worker.execute { runCatching { bridge.callAttr("close") } }
         worker.shutdown()
         releaseNetwork()
+        releaseCameraNetwork()
         super.onDestroy()
     }
 
@@ -224,6 +425,7 @@ class MainActivity : Activity() {
 
     private fun showCamera(json: JSONObject) {
         connected = true
+        direct = json.optBoolean("direct", false)
         json.optString("ip").takeIf { it.isNotEmpty() }?.let {
             getPreferences(Context.MODE_PRIVATE).edit().putString("last_camera_ip", it).apply()
         }
@@ -237,7 +439,8 @@ class MainActivity : Activity() {
         selected.clear()
         thumbnails.clear()
         onPhone = galleryContents()
-        status.text = getString(R.string.connected, json.getString("model"), files.size,
+        status.text = if (direct) getString(R.string.connected_direct, json.getString("model"), files.size)
+        else getString(R.string.connected, json.getString("model"), files.size,
             Formatter.formatShortFileSize(this, json.getLong("free")),
             Formatter.formatShortFileSize(this, json.getLong("capacity")))
         refreshSelection()
@@ -268,6 +471,8 @@ class MainActivity : Activity() {
             runCatching { bridge.callAttr("close") }
             main.post {
                 connected = false
+                direct = false
+                releaseCameraNetwork()
                 files = emptyList()
                 selected.clear()
                 thumbnails.clear()
@@ -302,11 +507,13 @@ class MainActivity : Activity() {
                         status.text = getString(R.string.downloading, file.name, number + 1, chosen.size, percent)
                     }
                 }
+                var written = temp
                 val result = runCatching {
-                    bridge.callAttr("download", file.index, temp.absolutePath, listener)
-                    saveToGallery(temp, file)
+                    written = File(bridge.callAttr("download", file.index, temp.absolutePath, listener).toString())
+                    saveToGallery(written, file)
                 }
                 temp.delete()
+                written.delete()
                 if (result.isFailure) {
                     error = result.exceptionOrNull()
                     break
@@ -331,6 +538,8 @@ class MainActivity : Activity() {
                 }
                 if (!stillConnected) {
                     connected = false
+                    direct = false
+                    releaseCameraNetwork()
                     connectButton.text = getString(R.string.connect)
                     releaseNetwork()
                 }
@@ -404,6 +613,8 @@ class MainActivity : Activity() {
         else getString(R.string.selected, selected.size, Formatter.formatShortFileSize(this, bytes))
         downloadButton.isEnabled = connected && !busy && selected.isNotEmpty()
         selectAll.isEnabled = connected && !busy && files.isNotEmpty()
+        connectDirectButton.visibility = if (!connected && savedCameraWifi() != null) View.VISIBLE else View.GONE
+        connectDirectButton.isEnabled = !busy
         selectAll.text = getString(if (files.isNotEmpty() && selected.size == files.size) R.string.select_none else R.string.select_all)
         adapter.notifyDataSetChanged()
     }

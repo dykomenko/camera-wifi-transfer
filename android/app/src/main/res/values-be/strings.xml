@@ -18,4 +18,12 @@
     <string name="on_phone">у тэлефоне</string>
     <string name="disconnected">Адключана. Камера пераведзена ў сон.</string>
     <string name="connection_lost">Сувязь з камерай перарвалася. Націсніце на камеры Cancel, зноў выберыце «Адправіць на камп\'ютар» і падключыцеся.</string>
+    <string name="connect_direct">Праз Wi-Fi камеры</string>
+    <string name="camera_wifi_joining">Падключаюся да Wi-Fi камеры %1$s…</string>
+    <string name="camera_wifi_failed">Не ўдалося падключыцца да Wi-Fi камеры. Адкрыйце здымак у праглядзе на камеры (або выберыце «Адправіць на смартфон»), зноў прыкладзіце тэлефон да меткі N або націсніце кнопку.</string>
+    <string name="connected_direct">%1$s · файлаў: %2$d · Wi-Fi камеры, JPEG</string>
+    <string name="nfc_camera">NFC: %1$s, сетка %2$s</string>
+    <string name="nfc_not_sony">Гэтая NFC-метка не ад камеры Sony.</string>
+    <string name="permission_needed">Дазвольце доступ да прылад Wi-Fi паблізу, каб праграма магла падключыцца да сеткі камеры.</string>
+    <string name="hint_nfc">Або: адкрыйце здымак на камеры і прыкладзіце тэлефон да меткі N.</string>
 </resources>
