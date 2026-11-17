@@ -751,6 +751,9 @@ class SonySoapClient:
             headers={
                 "Content-Type": 'text/xml; charset="utf-8"',
                 "SOAPACTION": f'"{service}#{action}"',
+                # Sony's own app identifies itself like this on every call.
+                "User-Agent": "UPnP/1.0 DLNADOC/1.50",
+                "X-AV-Client-Info": 'av=5.0; hn=""; cn="Sony Corp."; mn="PMlib"; mv="2.8.1";',
             },
         )
         fault = _extract_soap_fault(response_payload)

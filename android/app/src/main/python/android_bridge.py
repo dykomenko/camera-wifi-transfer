@@ -5,6 +5,7 @@ is needed here beyond what ``CameraSession`` already does.
 """
 
 import json
+import re
 import socket
 from concurrent.futures import ThreadPoolExecutor
 
@@ -13,6 +14,7 @@ import time
 
 import airmtp
 from camera_session import CameraSession, SessionError
+import sony_soap
 from sony_soap import SonySoapClient, SonySoapError
 
 PTPIP_PORT = 15740
@@ -172,32 +174,38 @@ def connect_direct(wait_seconds, diag_path=""):
                 raise
             time.sleep(1.0)
     _diag("camera:", descriptor.manufacturer, descriptor.model_name, descriptor.friendly_name)
-    _log_services(client)
+    # Order recorded from Sony's own app (socket log): descriptor on 64321,
+    # then the camera's device-info files on 60151, and only then the SOAP
+    # calls.  Asking for the list first makes the camera answer 506.
+    _fetch_device_info(client.host)
 
     items = None
     failures = []
-    # "Select on Smartphone" browses PhotoRoot right away; the push variant
-    # ("Select on camera") needs X_TransferStart first.  Which one this
-    # camera is in is not known up front, so try both orders.
-    for use_push in (False, True):
-        if use_push:
-            try:
-                client.start_transfer()
-                _diag("X_TransferStart ok")
-            except SonySoapError as error:
-                _diag("X_TransferStart rejected:", error)
-                failures.append(f"TransferStart: {error}")
-        for browse_root in ("PhotoRoot", "PushRoot", "0"):
-            try:
-                items = client._browse_tree(browse_root)
-                _diag(f"browse {browse_root} (push={use_push}): {len(items)} items")
-                if items:
-                    break
-            except SonySoapError as error:
-                _diag(f"browse {browse_root} (push={use_push}) failed:", error)
-                failures.append(f"{browse_root}: {error}")
-        if items:
-            break
+    try:
+        client.start_transfer()
+        _diag("X_TransferStart ok")
+    except SonySoapError as error:
+        _diag("X_TransferStart rejected:", error)
+        failures.append(f"TransferStart: {error}")
+    roots = []
+    try:
+        reply = client._soap_request(client._xpush_control_url, sony_soap.XPUSH_SERVICE, "X_GetPushRoot", ())
+        found = re.search(rb"<ObjectID>([^<]*)</ObjectID>", reply)
+        if found:
+            roots.append(found.group(1).decode())
+        _diag("X_GetPushRoot ->", roots)
+    except SonySoapError as error:
+        _diag("X_GetPushRoot failed:", error)
+        failures.append(f"GetPushRoot: {error}")
+    for browse_root in roots + ["PushRoot", "PhotoRoot"]:
+        try:
+            items = client._browse_tree(browse_root)
+            _diag(f"browse {browse_root}: {len(items)} items")
+            if items:
+                break
+        except SonySoapError as error:
+            _diag(f"browse {browse_root} failed:", error)
+            failures.append(f"{browse_root}: {error}")
     if not items:
         _probe_more(client)
         _run_probe_script(client)
@@ -243,6 +251,27 @@ def _run_probe_script(client):
         exec(compile(code, script, "exec"), {"client": client, "diag": _diag, "host": client.host})
     except Exception as error:  # diagnostics only
         _diag("probe.py failed:", repr(error))
+
+
+def _fetch_device_info(host):
+    """Download the camera's device-info files completely, as Sony's app does."""
+
+    import urllib.request
+
+    headers = {
+        "User-Agent": "UPnP/1.0 DLNADOC/1.50",
+        "X-AV-Client-Info": 'av=5.0; hn=""; cn="Sony Corp."; mn="PMlib"; mv="2.8.1";',
+        "Connection": "close",
+    }
+    for path in ("/deviceInfo/deviceNumber.bin", "/deviceInfo/deviceFile.bin"):
+        started = time.time()
+        try:
+            request = urllib.request.Request(f"http://{host}:60151{path}", headers=headers)
+            with urllib.request.urlopen(request, timeout=30) as response:
+                size = len(response.read())
+            _diag("device info", path, size, "bytes in", round(time.time() - started, 1), "s")
+        except Exception as error:
+            _diag("device info", path, "failed:", error)
 
 
 def _probe_ports(host):
