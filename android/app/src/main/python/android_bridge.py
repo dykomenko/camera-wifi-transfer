@@ -200,8 +200,8 @@ def connect_direct(wait_seconds, diag_path=""):
             break
     if not items:
         _probe_more(client)
-        _probe_ports(client.host)
-        items = _retry_browse(client)
+        _run_probe_script(client)
+        items = _retry_browse(client, 15)
     if not items:
         raise SonySoapError("; ".join(dict.fromkeys(failures)) or "the camera lists no pictures")
     _direct = client
@@ -226,6 +226,25 @@ def connect_direct(wait_seconds, diag_path=""):
     })
 
 
+def _run_probe_script(client):
+    """Developer aid while the camera protocol is being worked out: run
+    probe.py from the app's external files folder (next to camera-direct.log,
+    pushed with adb) against the connected camera.  Only the developer can
+    put a file there."""
+
+    if not _diag_path:
+        return
+    script = os.path.join(os.path.dirname(_diag_path), "probe.py")
+    if not os.path.exists(script):
+        return
+    try:
+        with open(script, encoding="utf-8") as handle:
+            code = handle.read()
+        exec(compile(code, script, "exec"), {"client": client, "diag": _diag, "host": client.host})
+    except Exception as error:  # diagnostics only
+        _diag("probe.py failed:", repr(error))
+
+
 def _probe_ports(host):
     """Which TCP ports does the camera answer on in this mode?"""
 
@@ -237,6 +256,47 @@ def _probe_ports(host):
         except OSError:
             pass
     _diag("open ports on", host, ":", open_ports)
+
+
+def _probe_handshake(host):
+    """The camera's screen says "Connecting": something may be expected from
+    the phone on the second port (60151, device info) or over SSDP."""
+
+    import urllib.request
+
+    for path in ("/", "/deviceInfo/deviceNumber.bin", "/deviceInfo/deviceFile.bin",
+                 "/deviceInfo/", "/DmsDescPush.xml"):
+        url = f"http://{host}:60151{path}"
+        try:
+            with urllib.request.urlopen(url, timeout=6) as response:
+                body = response.read(400)
+                _diag("GET", url, "->", response.status, dict(response.headers), "len", len(body),
+                      body[:48].hex() if path.endswith(".bin") else body[:300].decode("utf-8", "replace"))
+        except Exception as error:
+            detail = ""
+            if hasattr(error, "read"):
+                try:
+                    detail = error.read(200).decode("utf-8", "replace")
+                except Exception:
+                    pass
+            _diag("GET", url, "failed:", error, detail)
+
+    # Unicast SSDP search straight at the camera (needs no multicast lock).
+    for target in ("ssdp:all", "upnp:rootdevice", "urn:schemas-sony-com:service:XPushList:1"):
+        message = (
+            "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\n"
+            f"MX: 2\r\nST: {target}\r\n\r\n"
+        ).encode()
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(2.5)
+            sock.sendto(message, (host, 1900))
+            data, _ = sock.recvfrom(2048)
+            _diag("SSDP", target, "->", data.decode("utf-8", "replace").replace("\r\n", " | ")[:400])
+        except Exception as error:
+            _diag("SSDP", target, "no answer:", error)
+        finally:
+            sock.close()
 
 
 def _retry_browse(client, seconds=60):
