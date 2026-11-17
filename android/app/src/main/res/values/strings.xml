@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Camera Transfer</string>
+    <string name="connect">Connect to camera</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="hint_idle">On the camera choose Send to Computer. The phone and camera must be on the same Wi-Fi, or the camera on this phone\'s hotspot.</string>
+    <string name="camera_ip_hint">Camera IP (optional)</string>
+    <string name="searching">Looking for the camera…</string>
+    <string name="connected">%1$s · %2$d files · free %3$s of %4$s</string>
+    <string name="not_found">Camera not found. Is Send to Computer on, and is the camera on this Wi-Fi or hotspot? If it was used a moment ago, press Cancel on the camera and choose Send to Computer again.</string>
+    <string name="selected">Selected: %1$d · %2$s</string>
+    <string name="nothing_selected">Tap photos to select them</string>
+    <string name="download">Download</string>
+    <string name="select_all">All</string>
+    <string name="select_none">None</string>
+    <string name="downloading">%1$s · %2$d of %3$d · %4$d%%</string>
+    <string name="done">Saved %1$d to Pictures/Camera Transfer</string>
+    <string name="download_failed">Stopped: %1$s</string>
+    <string name="on_phone">on phone</string>
+    <string name="disconnected">Disconnected. The camera was sent to sleep.</string>
+    <string name="connection_lost">Connection to the camera was lost. Press Cancel on the camera, choose Send to Computer again and connect.</string>
+</resources>

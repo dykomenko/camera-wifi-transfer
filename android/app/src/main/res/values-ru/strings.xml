@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connect">Подключиться к камере</string>
+    <string name="disconnect">Отключиться</string>
+    <string name="hint_idle">На камере выберите «Отправить на компьютер». Телефон и камера должны быть в одной Wi-Fi-сети или камера — в точке доступа этого телефона.</string>
+    <string name="camera_ip_hint">IP камеры (необязательно)</string>
+    <string name="searching">Ищу камеру…</string>
+    <string name="connected">%1$s · файлов: %2$d · свободно %3$s из %4$s</string>
+    <string name="not_found">Камера не найдена. Включено ли «Отправить на компьютер» и подключена ли камера к этой Wi-Fi или точке доступа? Если камеру только что использовали, нажмите на ней Cancel и снова выберите «Отправить на компьютер».</string>
+    <string name="selected">Выбрано: %1$d · %2$s</string>
+    <string name="nothing_selected">Нажимайте на снимки, чтобы выбрать</string>
+    <string name="download">Скачать</string>
+    <string name="select_all">Все</string>
+    <string name="select_none">Снять</string>
+    <string name="downloading">%1$s · %2$d из %3$d · %4$d%%</string>
+    <string name="done">Сохранено: %1$d, в Pictures/Camera Transfer</string>
+    <string name="download_failed">Остановлено: %1$s</string>
+    <string name="on_phone">в телефоне</string>
+    <string name="disconnected">Отключено. Камера переведена в сон.</string>
+    <string name="connection_lost">Связь с камерой прервалась. Нажмите на камере Cancel, снова выберите «Отправить на компьютер» и подключитесь.</string>
+</resources>

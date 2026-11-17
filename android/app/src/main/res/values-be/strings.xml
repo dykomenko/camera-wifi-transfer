@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connect">Падключыцца да камеры</string>
+    <string name="disconnect">Адключыцца</string>
+    <string name="hint_idle">На камеры выберыце «Адправіць на камп\'ютар». Тэлефон і камера павінны быць у адной Wi-Fi-сетцы або камера — у пункце доступу гэтага тэлефона.</string>
+    <string name="camera_ip_hint">IP камеры (неабавязкова)</string>
+    <string name="searching">Шукаю камеру…</string>
+    <string name="connected">%1$s · файлаў: %2$d · вольна %3$s з %4$s</string>
+    <string name="not_found">Камера не знойдзена. Ці ўключана «Адправіць на камп\'ютар» і ці падключана камера да гэтай Wi-Fi або пункта доступу? Калі камеру толькі што выкарыстоўвалі, націсніце на ёй Cancel і зноў выберыце «Адправіць на камп\'ютар».</string>
+    <string name="selected">Выбрана: %1$d · %2$s</string>
+    <string name="nothing_selected">Націскайце на здымкі, каб выбраць</string>
+    <string name="download">Спампаваць</string>
+    <string name="select_all">Усе</string>
+    <string name="select_none">Зняць</string>
+    <string name="downloading">%1$s · %2$d з %3$d · %4$d%%</string>
+    <string name="done">Захавана: %1$d, у Pictures/Camera Transfer</string>
+    <string name="download_failed">Спынена: %1$s</string>
+    <string name="on_phone">у тэлефоне</string>
+    <string name="disconnected">Адключана. Камера пераведзена ў сон.</string>
+    <string name="connection_lost">Сувязь з камерай перарвалася. Націсніце на камеры Cancel, зноў выберыце «Адправіць на камп\'ютар» і падключыцеся.</string>
+</resources>
