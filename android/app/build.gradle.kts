@@ -12,8 +12,8 @@ android {
         applicationId = "com.dykomenko.cameratransfer"
         minSdk = 29
         targetSdk = 34
-        versionCode = 6
-        versionName = "0.4.2-beta"
+        versionCode = 7
+        versionName = "0.4.3-beta"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
@@ -37,10 +37,13 @@ android {
 }
 
 dependencies {
-    // QR scanner for the code a Sony camera shows on its "Send to Smartphone" screen.
-    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
-    // The scanner uses ContextCompat/ActivityCompat but does not bring them along.
-    implementation("androidx.core:core:1.12.0")
+    // Own portrait QR scanner (tap to focus/meter) for the code a Sony camera
+    // shows on its "Send to Smartphone" screen: CameraX + ZXing decoder.
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("androidx.activity:activity-ktx:1.8.2")
+    implementation("androidx.camera:camera-camera2:1.3.4")
+    implementation("androidx.camera:camera-lifecycle:1.3.4")
+    implementation("androidx.camera:camera-view:1.3.4")
 }
 
 // The camera code is shared with the desktop app: copy it from the

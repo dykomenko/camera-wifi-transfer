@@ -34,7 +34,6 @@ import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.content.Intent
-import com.google.zxing.integration.android.IntentIntegrator
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import org.json.JSONObject
@@ -66,9 +65,11 @@ fun parseSonyNfc(payload: ByteArray): CameraWifi? {
         }
         i += 4 + length
     }
-    val ssid = ssidAndModel?.substringBefore(':') ?: return null
+    // The whole value is the network name: an a6500 broadcasts
+    // "DIRECT-dKE1:ILCE-6500", model included.
+    val ssid = ssidAndModel ?: return null
     if (!ssid.startsWith("DIRECT-") || password.isNullOrEmpty()) return null
-    return CameraWifi(ssid, password, ssidAndModel.substringAfter(':', ""))
+    return CameraWifi(ssid, password, ssid.substringAfter(':', ""))
 }
 
 /**
@@ -82,14 +83,18 @@ fun parseCameraQr(text: String): CameraWifi? {
     val password = Regex("""(?:^|;)P:([^;]+)""").find(body)?.groupValues?.get(1) ?: return null
     val model = Regex("""(?:^|;)C:([^;]+)""").find(body)?.groupValues?.get(1) ?: ""
     if (ssid.isEmpty() || password.isEmpty()) return null
-    // Sony's code carries only the part after "DIRECT-" (seen on an a6500:
-    // S:dKE1 for the network DIRECT-dKE1, which the NFC tag names in full).
+    // Sony's code carries only the part between "DIRECT-" and the model (seen
+    // on an a6500: S:dKE1;C:ILCE-6500 for the network DIRECT-dKE1:ILCE-6500).
     val sony = text.trim().startsWith("W01:")
-    return CameraWifi(if (sony) cameraSsid(ssid) else ssid, password, model)
+    return CameraWifi(if (sony) cameraSsid(ssid, model) else ssid, password, model)
 }
 
-/** Sony camera networks are always "DIRECT-…". */
-fun cameraSsid(ssid: String) = if (ssid.startsWith("DIRECT-")) ssid else "DIRECT-$ssid"
+/** Sony camera networks are named "DIRECT-<id>:<model>". */
+fun cameraSsid(ssid: String, model: String): String {
+    var name = if (ssid.startsWith("DIRECT-")) ssid else "DIRECT-$ssid"
+    if (':' !in name && model.isNotEmpty()) name += ":$model"
+    return name
+}
 
 data class CameraFile(
     val index: Int,
@@ -106,6 +111,10 @@ class ProgressListener(private val onProgress: (Long, Long) -> Unit) {
 }
 
 class MainActivity : Activity() {
+    companion object {
+        private const val QR_REQUEST = 4711
+    }
+
     // Every call into Python runs on this one thread, in order.
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -168,12 +177,8 @@ class MainActivity : Activity() {
         connectDirectButton.setOnClickListener { savedCameraWifi()?.let { connectDirect(it) } }
         findViewById<Button>(R.id.scan_qr).setOnClickListener {
             if (busy || connected) return@setOnClickListener
-            IntentIntegrator(this)
-                .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
-                .setPrompt(getString(R.string.qr_prompt))
-                .setBeepEnabled(false)
-                .setOrientationLocked(false)
-                .initiateScan()
+            @Suppress("DEPRECATION")
+            startActivityForResult(Intent(this, QrScanActivity::class.java), QR_REQUEST)
         }
         status.text = getString(R.string.hint_idle) + System.lineSeparator() + getString(R.string.hint_nfc)
         progress = findViewById(R.id.progress)
@@ -214,7 +219,7 @@ class MainActivity : Activity() {
         super.onPause()
     }
 
-    /** Diagnostic for now: log every NDEF record of the camera's NFC tag. */
+    /** Log the shape of the camera's NFC tag (never its payload: it holds the password). */
     private fun onNfcTag(tag: Tag) {
         val lines = mutableListOf("NFC tag ${tag.id.toHex()} techs=${tag.techList.joinToString()}")
         val ndef = Ndef.get(tag)
@@ -224,9 +229,7 @@ class MainActivity : Activity() {
                 val message = ndef.ndefMessage ?: ndef.cachedNdefMessage
                 message?.records?.forEachIndexed { i, record ->
                     lines += "record $i tnf=${record.tnf} type=${String(record.type, Charsets.ISO_8859_1)} " +
-                        "id=${record.id.toHex()} payload(${record.payload.size})=${record.payload.toHex()}"
-                    lines += "record $i text=" + String(record.payload, Charsets.ISO_8859_1)
-                        .map { if (it.code in 32..126) it else '.' }.joinToString("")
+                        "payload ${record.payload.size} bytes"
                 }
                 ndef.close()
             }.onFailure { lines += "read failed: $it" }
@@ -254,12 +257,12 @@ class MainActivity : Activity() {
 
     @Deprecated("Activity result API of the plain framework Activity")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        val scan = IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
-        if (scan == null) {
+        if (requestCode != QR_REQUEST) {
+            @Suppress("DEPRECATION")
             super.onActivityResult(requestCode, resultCode, data)
             return
         }
-        val text = scan.contents ?: return
+        val text = data?.getStringExtra(QrScanActivity.EXTRA_TEXT) ?: return
         // Log only the shape of the code, never the password.
         android.util.Log.i("CameraTransferQr", "field keys=" + text.split(';').map { it.substringBeforeLast(':', "") }
             .map { it.takeLast(1) })
@@ -284,10 +287,11 @@ class MainActivity : Activity() {
 
     private fun savedCameraWifi(): CameraWifi? {
         val prefs = getPreferences(Context.MODE_PRIVATE)
-        // cameraSsid() also repairs a name saved by 0.4.x without "DIRECT-".
-        val ssid = cameraSsid(prefs.getString("camera_ssid", null) ?: return null)
+        // cameraSsid() also repairs a name saved by 0.4.x without "DIRECT-" or the model.
+        val model = prefs.getString("camera_model", "") ?: ""
+        val ssid = cameraSsid(prefs.getString("camera_ssid", null) ?: return null, model)
         val password = prefs.getString("camera_password", null) ?: return null
-        return CameraWifi(ssid, password, prefs.getString("camera_model", "") ?: "")
+        return CameraWifi(ssid, password, model)
     }
 
     // ------------------------------------------------- camera's own Wi-Fi

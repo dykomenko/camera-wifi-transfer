@@ -29,4 +29,6 @@
     <string name="scan_qr">QR-код з камеры</string>
     <string name="qr_prompt">Навядзіце на QR-код на экране «Адправіць на смартфон» камеры</string>
     <string name="qr_not_camera">У гэтым QR-кодзе няма даных Wi-Fi камеры.</string>
+    <string name="qr_tap_hint">Дакраніцеся да выявы, каб навесці рэзкасць і экспазіцыю ў гэтым месцы</string>
+    <string name="close">Закрыць</string>
 </resources>

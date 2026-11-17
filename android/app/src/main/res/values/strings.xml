@@ -30,4 +30,6 @@
     <string name="scan_qr">Scan QR from camera</string>
     <string name="qr_prompt">Point at the QR code on the camera\'s Send to Smartphone screen</string>
     <string name="qr_not_camera">This QR code has no camera Wi-Fi details.</string>
+    <string name="qr_tap_hint">Tap the picture to focus and set exposure there</string>
+    <string name="close">Close</string>
 </resources>
