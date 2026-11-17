@@ -200,6 +200,9 @@ def connect_direct(wait_seconds, diag_path=""):
             break
     if not items:
         _probe_more(client)
+        _probe_ports(client.host)
+        items = _retry_browse(client)
+    if not items:
         raise SonySoapError("; ".join(dict.fromkeys(failures)) or "the camera lists no pictures")
     _direct = client
     _items = items
@@ -221,6 +224,49 @@ def connect_direct(wait_seconds, diag_path=""):
             for item in _items
         ],
     })
+
+
+def _probe_ports(host):
+    """Which TCP ports does the camera answer on in this mode?"""
+
+    open_ports = []
+    for port in (80, 443, 8080, 8000, 10000, 15740, 5353, 5002, 55001, 60151, 64321):
+        try:
+            with socket.create_connection((host, port), timeout=1.5):
+                open_ports.append(port)
+        except OSError:
+            pass
+    _diag("open ports on", host, ":", open_ports)
+
+
+def _retry_browse(client, seconds=60):
+    """The camera might answer 506 only while it is still busy (building its
+    picture list, waiting for a menu step); keep asking and log any change."""
+
+    deadline = time.time() + seconds
+    last = None
+    while time.time() < deadline:
+        for use_push in (False, True):
+            if use_push:
+                try:
+                    client.start_transfer()
+                except SonySoapError:
+                    pass
+            for browse_root in ("PhotoRoot", "PushRoot"):
+                try:
+                    items = client._browse_tree(browse_root)
+                    _diag(f"retry: browse {browse_root} worked: {len(items)} items")
+                    if items:
+                        return items
+                    state = f"{browse_root}: empty"
+                except SonySoapError as error:
+                    state = f"{browse_root}: {error}"
+                if state != last:
+                    _diag("retry state:", state)
+                    last = state
+        time.sleep(3.0)
+    _diag("retry gave up after", seconds, "s")
+    return None
 
 
 def _probe_variants(client, url):
