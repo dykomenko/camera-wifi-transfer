@@ -147,7 +147,12 @@ class MainActivity : Activity() {
         val wifiNetwork: Network? = connectivity.allNetworks.firstOrNull {
             connectivity.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
         }
-        connectivity.bindProcessToNetwork(wifiNetwork)  // null = default (hotspot case)
+        // With the phone's hotspot on, the camera is on the hotspot interface;
+        // binding to a Wi-Fi network would cut that path, so only bind when
+        // the Wi-Fi is the phone's only local network.
+        val wifiInterface = wifiNetwork?.let { connectivity.getLinkProperties(it)?.interfaceName }
+        val otherLocal = localInterfaces().any { (name, _) -> name != wifiInterface }
+        connectivity.bindProcessToNetwork(if (otherLocal) null else wifiNetwork)
         val wifi = applicationContext.getSystemService(WifiManager::class.java)
         multicastLock = wifi.createMulticastLock("camera-discovery").apply {
             setReferenceCounted(false)
@@ -171,7 +176,10 @@ class MainActivity : Activity() {
     }
 
     /** IPv4 addresses of this phone that can face the camera: Wi-Fi first, then hotspot. */
-    private fun localAddresses(): List<String> {
+    private fun localAddresses(): List<String> = localInterfaces().map { it.second }.distinct()
+
+    /** (interface name, IPv4 address) of local, non-cellular interfaces, Wi-Fi first. */
+    private fun localInterfaces(): List<Pair<String, String>> {
         val cellular = listOf("rmnet", "ccmni", "pdp", "rev_rmnet", "v4-rmnet", "dummy", "tun", "lo")
         val found = mutableListOf<Pair<String, String>>()
         for (nic in NetworkInterface.getNetworkInterfaces().toList()) {
@@ -182,7 +190,7 @@ class MainActivity : Activity() {
                 }
             }
         }
-        return found.sortedBy { (name, _) -> if (name == "wlan0") 0 else 1 }.map { it.second }.distinct()
+        return found.sortedBy { (name, _) -> if (name == "wlan0") 0 else 1 }
     }
 
     // ------------------------------------------------------------ actions
@@ -196,15 +204,17 @@ class MainActivity : Activity() {
         progress.visibility = View.VISIBLE
         val workDir = File(filesDir, "session").absolutePath
         val interfaces = localAddresses().joinToString(",")
+        val lastIp = getPreferences(Context.MODE_PRIVATE).getString("last_camera_ip", "") ?: ""
         worker.execute {
             val result = runCatching {
-                bridge.callAttr("connect", workDir, ip, interfaces, 5).toString()
+                bridge.callAttr("connect", workDir, ip, interfaces, 5, lastIp).toString()
             }
             main.post {
                 progress.visibility = View.GONE
                 setBusy(false)
                 result.onSuccess { json -> showCamera(JSONObject(json)) }
-                result.onFailure {
+                result.onFailure { error ->
+                    android.util.Log.w("CameraTransfer", "connect failed", error)
                     releaseNetwork()
                     status.text = getString(R.string.not_found)
                 }
@@ -214,6 +224,9 @@ class MainActivity : Activity() {
 
     private fun showCamera(json: JSONObject) {
         connected = true
+        json.optString("ip").takeIf { it.isNotEmpty() }?.let {
+            getPreferences(Context.MODE_PRIVATE).edit().putString("last_camera_ip", it).apply()
+        }
         connectButton.text = getString(R.string.disconnect)
         val list = json.getJSONArray("files")
         files = (0 until list.length()).map {
