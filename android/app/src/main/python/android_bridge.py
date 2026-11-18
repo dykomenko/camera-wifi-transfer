@@ -220,10 +220,38 @@ def connect_direct(wait_seconds, diag_path=""):
         _run_probe_script(client)
         items = _retry_browse(client, 15)
     if not items:
+        # Maybe the camera offers the pictures only after the selection on its
+        # screen is confirmed: keep asking for a while.
+        items = _wait_for_selection(client, 60)
+    if not items:
         raise SonySoapError("; ".join(dict.fromkeys(failures)) or "the camera lists no pictures")
     _direct = client
     _items = items
     return _direct_listing(client, descriptor)
+
+
+def _wait_for_selection(client, seconds):
+    deadline = time.time() + seconds
+    last = None
+    while time.time() < deadline:
+        current = _read_current_content(client, quiet=True)
+        if current:
+            _diag("waiting: current content appeared")
+            return current
+        try:
+            items = client._browse_tree("PushRoot")
+            if items:
+                _diag("waiting: PushRoot has", len(items), "items")
+                return items
+            state = "PushRoot empty"
+        except SonySoapError as error:
+            state = str(error)
+        if state != last:
+            _diag("waiting:", state)
+            last = state
+        time.sleep(2.0)
+    _diag("waiting for a selection gave up after", seconds, "s")
+    return None
 
 
 def _direct_listing(client, descriptor):
@@ -275,7 +303,7 @@ class _CurrentContent:
         return next(iter(self.urls.values()))
 
 
-def _read_current_content(client):
+def _read_current_content(client, quiet=False):
     import xml.etree.ElementTree as ET
     import urllib.request
 
@@ -299,7 +327,8 @@ def _read_current_content(client):
         stem = name.rsplit(".", 1)[0]
         by_stem.setdefault(stem, {})[element.attrib.get("profileID", "")] = url
     if not by_stem:
-        _diag("no current content offered")
+        if not quiet:
+            _diag("no current content offered")
         return []
     items = []
     for stem, urls in by_stem.items():
