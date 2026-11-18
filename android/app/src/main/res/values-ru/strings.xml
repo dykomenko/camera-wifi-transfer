@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="connect">Подключиться к камере</string>
+    <string name="connect">Подключиться</string>
     <string name="disconnect">Отключиться</string>
-    <string name="hint_idle">На камере выберите «Отправить на компьютер». Телефон и камера должны быть в одной Wi-Fi-сети или камера — в точке доступа этого телефона.</string>
-    <string name="camera_ip_hint">IP камеры (необязательно)</string>
+    <string name="camera_ip_hint">Например 192.168.1.20</string>
+    <string name="camera_ip_label">IP камеры (пусто — найти автоматически)</string>
     <string name="searching">Ищу камеру…</string>
-    <string name="connected">%1$s · файлов: %2$d · свободно %3$s из %4$s</string>
     <string name="not_found">Камера не найдена. Включено ли «Отправить на компьютер» и подключена ли камера к этой Wi-Fi или точке доступа? Если камеру только что использовали, нажмите на ней Cancel и снова выберите «Отправить на компьютер».</string>
     <string name="selected">Выбрано: %1$d · %2$s</string>
     <string name="nothing_selected">Нажимайте на снимки, чтобы выбрать</string>
@@ -17,20 +16,35 @@
     <string name="download_failed">Остановлено: %1$s</string>
     <string name="on_phone">в телефоне</string>
     <string name="disconnected">Отключено. Камера переведена в сон.</string>
-    <string name="connection_lost">Связь с камерой прервалась. Нажмите на камере Cancel, снова выберите «Отправить на компьютер» и подключитесь.</string>
-    <string name="connect_direct">Через Wi-Fi камеры</string>
-    <string name="camera_wifi_joining">Подключаюсь к Wi-Fi камеры %1$s…</string>
-    <string name="camera_wifi_failed">Не удалось подключиться к Wi-Fi камеры. Откройте снимок в просмотре на камере (или выберите «Отправить на смартфон»), снова приложите телефон к метке N или нажмите кнопку.</string>
-    <string name="connected_direct">%1$s · файлов: %2$d · Wi-Fi камеры, JPEG</string>
+    <string name="connection_lost">Связь с камерой прервалась. Запустите отправку на камере заново и подключитесь.</string>
+    <string name="camera_wifi_joining">Подключаюсь к Wi-Fi камеры %1$s… Нажмите «Подключиться» в системном окне.</string>
+    <string name="camera_wifi_failed">Не удалось подключиться к Wi-Fi камеры. На камере выйдите с экрана «Отправить на смартфон» и откройте его снова, затем повторите.</string>
     <string name="nfc_camera">NFC: %1$s, сеть %2$s</string>
     <string name="nfc_not_sony">Эта NFC-метка не от камеры Sony.</string>
+    <string name="nfc_wrong_mode">Метка N работает в режиме «Как приложение Sony». Смените режим в настройках (справа вверху).</string>
     <string name="permission_needed">Разрешите доступ к устройствам Wi-Fi поблизости, чтобы приложение могло подключиться к сети камеры.</string>
-    <string name="hint_nfc">Или: выберите на камере «Отправить на смартфон», затем отсканируйте её QR-код или, держа это приложение открытым на экране, приложите телефон к метке N.</string>
-    <string name="scan_qr">QR-код с камеры</string>
+    <string name="scan_qr">Сканировать QR-код камеры</string>
+    <string name="scan_qr_again">Сканировать QR-код заново</string>
     <string name="qr_prompt">Наведите на QR-код на экране «Отправить на смартфон» камеры</string>
     <string name="qr_not_camera">В этом QR-коде нет данных Wi-Fi камеры.</string>
     <string name="qr_tap_hint">Коснитесь изображения, чтобы навести резкость и экспозицию в этой точке</string>
     <string name="close">Закрыть</string>
     <string name="hotspot">Точка доступа телефона (2,4 ГГц)</string>
-    <string name="hint_hotspot">Вне дома: в настройках точки доступа выберите диапазон 2,4 ГГц и включите её, подключите к ней камеру (настройки Wi-Fi на камере), затем на камере выберите «Отправить на компьютер» и нажмите «Подключиться к камере» здесь.</string>
+
+    <string name="settings_title">Режим подключения</string>
+    <string name="settings_hint">Выберите один раз — дальше приложение всегда работает так.</string>
+    <string name="mode_pc_name">Как компьютер</string>
+    <string name="mode_pc_desc">Быстро, RAW и JPEG, любые снимки с карты. Нужна одна сеть 2,4 ГГц для телефона и камеры: домашний Wi-Fi или точка доступа этого телефона.</string>
+    <string name="mode_phone_name">Как приложение Sony</string>
+    <string name="mode_phone_desc">По собственному Wi-Fi камеры, роутер не нужен. Снимки выбираются на камере, приходит JPEG.</string>
+    <string name="saved_camera">Камера: %1$s</string>
+    <string name="forget">Забыть</string>
+    <string name="ready">Готово</string>
+    <string name="mode_chip">%1$s  ·  сменить</string>
+    <string name="home_title_pc">Отправить на компьютер</string>
+    <string name="home_hint_pc">На камере выберите «Отправить на компьютер». Телефон и камера должны быть в одной сети 2,4 ГГц: домашний Wi-Fi или камера в точке доступа этого телефона.</string>
+    <string name="home_title_phone">Отправить на смартфон</string>
+    <string name="home_hint_phone">На камере выберите «Отправить на смартфон» и снимки для отправки, затем отсканируйте QR-код на её экране или приложите телефон к метке N.</string>
+    <string name="sub_pc">Файлов: %1$d · свободно %2$s из %3$s</string>
+    <string name="sub_direct">Файлов: %1$d · Wi-Fi камеры, JPEG</string>
 </resources>

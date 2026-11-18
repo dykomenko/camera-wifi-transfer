@@ -183,9 +183,9 @@ def connect_direct(wait_seconds, diag_path=""):
     # DigitalImagingDesc.xml (X_CurrentContent_URL).  The catalogue and
     # X_TransferStart are not available then (they answer UPnP 506).
     current = _read_current_content(client)
-    if current is not None:
+    if current:
         _direct = client
-        _items = [current]
+        _items = current
         return _direct_listing(client, descriptor)
 
     items = None
@@ -284,34 +284,38 @@ def _read_current_content(client):
         root = ET.fromstring(raw)
     except Exception as error:
         _diag("DigitalImagingDesc.xml unreadable:", error)
-        return None
-    urls = {}
-    stem = None
+        return []
+    # One picture is offered as several renditions (TN_, SM_, LRG_ + the same
+    # name); group by the name so several chosen pictures stay separate.
+    by_stem = {}
     for element in root.iter():
         if sony_soap._local_name(element.tag) != "X_CurrentContent_URL_URL":
             continue
         url = (element.text or "").strip()
         if not url:
             continue
-        urls[element.attrib.get("profileID", "")] = url
         name = url.split("?")[0].rsplit("/", 1)[-1]  # LRG_DSC04117.ARW
         name = re.sub(r"^(TN|SM|LRG)_", "", name)
         stem = name.rsplit(".", 1)[0]
-    if not urls or not stem:
+        by_stem.setdefault(stem, {})[element.attrib.get("profileID", "")] = url
+    if not by_stem:
         _diag("no current content offered")
-        return None
-    item = _CurrentContent(stem, urls)
-    # Size for the progress bar: ask the camera for the headers only.
-    for method in ("HEAD", "GET"):
-        try:
-            request = urllib.request.Request(item.best_url(), headers=_SONY_HEADERS, method=method)
-            with urllib.request.urlopen(request, timeout=15) as response:
-                item.size = int(response.headers.get("Content-Length") or 0)
-            break
-        except Exception as error:
-            _diag("size", method, "failed:", error)
-    _diag("current content:", item.title, sorted(urls), "size", item.size)
-    return item
+        return []
+    items = []
+    for stem, urls in by_stem.items():
+        item = _CurrentContent(stem, urls)
+        # Size for the progress bar: ask the camera for the headers only.
+        for method in ("HEAD", "GET"):
+            try:
+                request = urllib.request.Request(item.best_url(), headers=_SONY_HEADERS, method=method)
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    item.size = int(response.headers.get("Content-Length") or 0)
+                break
+            except Exception as error:
+                _diag("size", method, "failed:", error)
+        _diag("current content:", item.title, sorted(urls), "size", item.size)
+        items.append(item)
+    return items
 
 
 def _run_probe_script(client):
@@ -507,7 +511,7 @@ def _probe_more(client):
         )
     try:
         raw = client._request_bytes("GET", client.base_url + "/DigitalImagingDesc.xml")
-        _diag("DigitalImagingDesc.xml:", raw.decode("utf-8", "replace").replace("\\n", " ")[:1500])
+        _diag("DigitalImagingDesc.xml:", len(raw), "bytes:", raw.decode("utf-8", "replace").replace("\\n", " ")[:8000])
     except Exception as error:
         _diag("DigitalImagingDesc.xml failed:", error)
 

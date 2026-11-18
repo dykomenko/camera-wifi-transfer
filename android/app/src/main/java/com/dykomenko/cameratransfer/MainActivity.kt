@@ -34,6 +34,11 @@ import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.content.Intent
+import android.app.Dialog
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.view.Gravity
+import android.view.Window
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import org.json.JSONObject
@@ -123,10 +128,21 @@ class MainActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
     private lateinit var bridge: PyObject
 
+    /** How the phone talks to the camera; chosen once in the settings. */
+    private enum class Mode(val key: String) { PC("pc"), PHONE("phone") }
+
     private lateinit var status: TextView
-    private lateinit var cameraIp: EditText
-    private lateinit var connectButton: Button
-    private lateinit var connectDirectButton: Button
+    private lateinit var home: View
+    private lateinit var sessionView: View
+    private lateinit var modeChip: TextView
+    private lateinit var homeTitle: TextView
+    private lateinit var homeHint: TextView
+    private lateinit var primary: Button
+    private lateinit var secondary: Button
+    private lateinit var hotspotButton: Button
+    private lateinit var cameraTitle: TextView
+    private lateinit var cameraSub: TextView
+    private lateinit var disconnectButton: Button
     private var cameraNetworkCallback: ConnectivityManager.NetworkCallback? = null
     private var direct = false
     private lateinit var progress: ProgressBar
@@ -174,24 +190,38 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
         bridge = Python.getInstance().getModule("android_bridge")
         status = findViewById(R.id.status)
-        cameraIp = findViewById(R.id.camera_ip)
-        connectButton = findViewById(R.id.connect)
-        connectDirectButton = findViewById(R.id.connect_direct)
-        connectDirectButton.setOnClickListener { savedCameraWifi()?.let { connectDirect(it) } }
-        findViewById<Button>(R.id.scan_qr).setOnClickListener {
-            if (busy || connected) return@setOnClickListener
-            @Suppress("DEPRECATION")
-            startActivityForResult(Intent(this, QrScanActivity::class.java), QR_REQUEST)
-        }
-        findViewById<Button>(R.id.hotspot).setOnClickListener { openHotspotSettings() }
-        status.text = getString(R.string.hint_idle) + System.lineSeparator() + getString(R.string.hint_hotspot)
-        progress =findViewById(R.id.progress)
+        home = findViewById(R.id.home)
+        sessionView = findViewById(R.id.session)
+        modeChip = findViewById(R.id.mode_chip)
+        homeTitle = findViewById(R.id.home_title)
+        homeHint = findViewById(R.id.home_hint)
+        primary = findViewById(R.id.primary)
+        secondary = findViewById(R.id.secondary)
+        hotspotButton = findViewById(R.id.hotspot)
+        cameraTitle = findViewById(R.id.camera_title)
+        cameraSub = findViewById(R.id.camera_sub)
+        disconnectButton = findViewById(R.id.disconnect)
+        progress = findViewById(R.id.progress)
         grid = findViewById(R.id.grid)
         selection = findViewById(R.id.selection)
         selectAll = findViewById(R.id.select_all)
         downloadButton = findViewById(R.id.download)
 
-        cameraIp.setText(getPreferences(Context.MODE_PRIVATE).getString("camera_ip", ""))
+        findViewById<View>(R.id.settings).setOnClickListener { showSettings(false) }
+        modeChip.setOnClickListener { showSettings(false) }
+        primary.setOnClickListener {
+            if (busy || connected) return@setOnClickListener
+            if (mode() == Mode.PHONE) {
+                val saved = savedCameraWifi()
+                if (saved != null) connectDirect(saved) else scanQr()
+            } else {
+                connect()
+            }
+        }
+        secondary.setOnClickListener { if (!busy && !connected) scanQr() }
+        hotspotButton.setOnClickListener { openHotspotSettings() }
+        disconnectButton.setOnClickListener { if (!busy) disconnect() }
+
         grid.adapter = adapter
         grid.setOnItemClickListener { _, _, position, _ ->
             if (busy) return@setOnItemClickListener
@@ -199,7 +229,6 @@ class MainActivity : Activity() {
             if (!selected.add(index)) selected.remove(index)
             refreshSelection()
         }
-        connectButton.setOnClickListener { if (connected) disconnect() else connect() }
         selectAll.setOnClickListener {
             if (busy) return@setOnClickListener
             if (selected.size == files.size) selected.clear() else files.forEach { selected.add(it.index) }
@@ -208,6 +237,85 @@ class MainActivity : Activity() {
         downloadButton.setOnClickListener { downloadSelected() }
         refreshSelection()
         handleForwardedNfc(intent)
+        if (mode() == null) showSettings(true)
+    }
+
+    private fun prefs() = getPreferences(Context.MODE_PRIVATE)
+
+    private fun mode(): Mode? = Mode.values().firstOrNull { it.key == prefs().getString("mode", null) }
+
+    private fun scanQr() {
+        if (busy || connected) return
+        @Suppress("DEPRECATION")
+        startActivityForResult(Intent(this, QrScanActivity::class.java), QR_REQUEST)
+    }
+
+    /** One message line under the title; errors are tinted red. Empty text hides it. */
+    private fun say(text: CharSequence?, error: Boolean = false) {
+        if (text.isNullOrEmpty()) {
+            status.visibility = View.GONE
+            return
+        }
+        status.text = text
+        status.setBackgroundResource(if (error) R.drawable.bg_banner_error else R.drawable.bg_banner)
+        status.setTextColor(getColor(if (error) R.color.error_text else R.color.text))
+        val h = (16 * resources.displayMetrics.density).toInt()
+        val v = (12 * resources.displayMetrics.density).toInt()
+        status.setPadding(h, v, h, v)
+        status.visibility = View.VISIBLE
+    }
+
+    /** The mode chooser (a bottom sheet): picked once, then the app always works that way. */
+    private fun showSettings(first: Boolean) {
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        val view = layoutInflater.inflate(R.layout.dialog_settings, null)
+        dialog.setContentView(view)
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.BOTTOM)
+            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        }
+        dialog.setCancelable(!first)
+        val optionPc = view.findViewById<View>(R.id.option_pc)
+        val optionPhone = view.findViewById<View>(R.id.option_phone)
+        val radioPc = view.findViewById<View>(R.id.radio_pc)
+        val radioPhone = view.findViewById<View>(R.id.radio_phone)
+        val ipBlock = view.findViewById<View>(R.id.ip_block)
+        val ip = view.findViewById<EditText>(R.id.camera_ip)
+        val savedBlock = view.findViewById<View>(R.id.saved_block)
+        val savedCamera = view.findViewById<TextView>(R.id.saved_camera)
+        val done = view.findViewById<Button>(R.id.settings_done)
+        ip.setText(prefs().getString("camera_ip", ""))
+        var choice = mode()
+        fun render() {
+            optionPc.isSelected = choice == Mode.PC
+            radioPc.isSelected = choice == Mode.PC
+            optionPhone.isSelected = choice == Mode.PHONE
+            radioPhone.isSelected = choice == Mode.PHONE
+            ipBlock.visibility = if (choice == Mode.PC) View.VISIBLE else View.GONE
+            done.isEnabled = choice != null
+            val saved = savedCameraWifi()
+            savedBlock.visibility = if (saved != null) View.VISIBLE else View.GONE
+            savedCamera.text = getString(R.string.saved_camera, saved?.ssid ?: "")
+        }
+        optionPc.setOnClickListener { choice = Mode.PC; render() }
+        optionPhone.setOnClickListener { choice = Mode.PHONE; render() }
+        view.findViewById<Button>(R.id.forget).setOnClickListener {
+            prefs().edit().remove("camera_ssid").remove("camera_password").remove("camera_model").apply()
+            render()
+        }
+        done.setOnClickListener {
+            prefs().edit()
+                .putString("mode", choice?.key)
+                .putString("camera_ip", ip.text.toString().trim())
+                .apply()
+            dialog.dismiss()
+        }
+        dialog.setOnDismissListener { say(null); refreshSelection() }
+        render()
+        dialog.show()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -281,12 +389,19 @@ class MainActivity : Activity() {
 
     private fun onCameraWifi(wifi: CameraWifi?) {
         if (wifi == null) {
-            status.text = getString(R.string.nfc_not_sony)
+            say(getString(R.string.nfc_not_sony), error = true)
             return
         }
         rememberCameraWifi(wifi)
+        // Touching the N mark only makes sense for the camera's own Wi-Fi; with
+        // no mode chosen yet it picks that mode.
+        if (mode() == null) prefs().edit().putString("mode", Mode.PHONE.key).apply()
+        if (mode() != Mode.PHONE) {
+            say(getString(R.string.nfc_wrong_mode))
+            return
+        }
         if (!busy && !connected) {
-            status.text = getString(R.string.nfc_camera, wifi.model, wifi.ssid)
+            say(getString(R.string.nfc_camera, wifi.model, wifi.ssid))
             connectDirect(wifi)
         }
     }
@@ -304,11 +419,11 @@ class MainActivity : Activity() {
             .map { it.takeLast(1) })
         val wifi = parseCameraQr(text)
         if (wifi == null) {
-            status.text = getString(R.string.qr_not_camera)
+            say(getString(R.string.qr_not_camera), error = true)
             return
         }
         rememberCameraWifi(wifi)
-        status.text = getString(R.string.nfc_camera, wifi.model, wifi.ssid)
+        say(getString(R.string.nfc_camera, wifi.model, wifi.ssid))
         connectDirect(wifi)
     }
 
@@ -342,12 +457,12 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED) {
             pendingDirect = wifi
-            status.text = getString(R.string.permission_needed)
+            say(getString(R.string.permission_needed))
             requestPermissions(arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES), 1)
             return
         }
         setBusy(true)
-        status.text = getString(R.string.camera_wifi_joining, wifi.ssid)
+        say(getString(R.string.camera_wifi_joining, wifi.ssid))
         progress.isIndeterminate = true
         progress.visibility = View.VISIBLE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -381,7 +496,7 @@ class MainActivity : Activity() {
                             android.util.Log.w("CameraTransfer", "direct connect failed", error)
                             releaseCameraNetwork()
                             val reason = (error.message ?: error.toString()).lineSequence().first().take(200)
-                            status.text = getString(R.string.camera_wifi_failed) + System.lineSeparator() + reason
+                            say(getString(R.string.camera_wifi_failed) + System.lineSeparator() + reason, error = true)
                         }
                     }
                 }
@@ -393,7 +508,7 @@ class MainActivity : Activity() {
                     progress.visibility = View.GONE
                     setBusy(false)
                     releaseCameraNetwork()
-                    status.text = getString(R.string.camera_wifi_failed)
+                    say(getString(R.string.camera_wifi_failed), error = true)
                 }
             }
 
@@ -403,8 +518,7 @@ class MainActivity : Activity() {
                     if (connected && direct) {
                         connected = false
                         direct = false
-                        connectButton.text = getString(R.string.connect)
-                        status.text = getString(R.string.camera_wifi_failed)
+                        say(getString(R.string.camera_wifi_failed), error = true)
                         releaseCameraNetwork()
                         refreshSelection()
                     }
@@ -499,11 +613,10 @@ class MainActivity : Activity() {
 
     // ------------------------------------------------------------ actions
     private fun connect() {
-        val ip = cameraIp.text.toString().trim()
-        getPreferences(Context.MODE_PRIVATE).edit().putString("camera_ip", ip).apply()
+        val ip = prefs().getString("camera_ip", "")?.trim() ?: ""
         prepareNetwork()
         setBusy(true)
-        status.text = getString(R.string.searching)
+        say(getString(R.string.searching))
         progress.isIndeterminate = true
         progress.visibility = View.VISIBLE
         val workDir = File(filesDir, "session").absolutePath
@@ -520,7 +633,7 @@ class MainActivity : Activity() {
                 result.onFailure { error ->
                     android.util.Log.w("CameraTransfer", "connect failed", error)
                     releaseNetwork()
-                    status.text = getString(R.string.not_found)
+                    say(getString(R.string.not_found), error = true)
                 }
             }
         }
@@ -532,7 +645,6 @@ class MainActivity : Activity() {
         json.optString("ip").takeIf { it.isNotEmpty() }?.let {
             getPreferences(Context.MODE_PRIVATE).edit().putString("last_camera_ip", it).apply()
         }
-        connectButton.text = getString(R.string.disconnect)
         val list = json.getJSONArray("files")
         files = (0 until list.length()).map {
             val item = list.getJSONObject(it)
@@ -542,8 +654,10 @@ class MainActivity : Activity() {
         selected.clear()
         thumbnails.clear()
         onPhone = galleryContents()
-        status.text = if (direct) getString(R.string.connected_direct, json.getString("model"), files.size)
-        else getString(R.string.connected, json.getString("model"), files.size,
+        say(null)
+        cameraTitle.text = json.getString("model")
+        cameraSub.text = if (direct) getString(R.string.sub_direct, files.size)
+        else getString(R.string.sub_pc, files.size,
             Formatter.formatShortFileSize(this, json.getLong("free")),
             Formatter.formatShortFileSize(this, json.getLong("capacity")))
         refreshSelection()
@@ -581,8 +695,7 @@ class MainActivity : Activity() {
                 thumbnails.clear()
                 releaseNetwork()
                 setBusy(false)
-                connectButton.text = getString(R.string.connect)
-                status.text = getString(R.string.disconnected)
+                say(getString(R.string.disconnected))
                 refreshSelection()
             }
         }
@@ -607,7 +720,7 @@ class MainActivity : Activity() {
                     val percent = ((doneBytes + done) * 100 / totalBytes).toInt()
                     main.post {
                         progress.progress = percent
-                        status.text = getString(R.string.downloading, file.name, number + 1, chosen.size, percent)
+                        say(getString(R.string.downloading, file.name, number + 1, chosen.size, percent))
                     }
                 }
                 var written = temp
@@ -634,17 +747,20 @@ class MainActivity : Activity() {
                 progress.visibility = View.GONE
                 setBusy(false)
                 val problem = error
-                status.text = when {
-                    problem == null -> getString(R.string.done, saved)
-                    !stillConnected -> getString(R.string.connection_lost)
-                    else -> getString(R.string.download_failed, problem.message ?: problem.toString())
-                }
+                say(
+                    when {
+                        problem == null -> getString(R.string.done, saved)
+                        !stillConnected -> getString(R.string.connection_lost)
+                        else -> getString(R.string.download_failed, problem.message ?: problem.toString())
+                    },
+                    error = problem != null,
+                )
                 if (!stillConnected) {
                     connected = false
                     direct = false
                     releaseCameraNetwork()
-                    connectButton.text = getString(R.string.connect)
                     releaseNetwork()
+                    refreshSelection()
                 }
             }
         }
@@ -705,19 +821,31 @@ class MainActivity : Activity() {
     // ----------------------------------------------------------------- ui
     private fun setBusy(value: Boolean) {
         busy = value
-        connectButton.isEnabled = !value
-        cameraIp.isEnabled = !value && !connected
         refreshSelection()
     }
 
+    /** Re-draw everything that depends on state: which screen, which buttons, the selection bar. */
     private fun refreshSelection() {
+        home.visibility = if (connected) View.GONE else View.VISIBLE
+        sessionView.visibility = if (connected) View.VISIBLE else View.GONE
+        val phoneMode = mode() == Mode.PHONE
+        val saved = savedCameraWifi()
+        modeChip.text = getString(R.string.mode_chip, getString(if (phoneMode) R.string.mode_phone_name else R.string.mode_pc_name))
+        homeTitle.setText(if (phoneMode) R.string.home_title_phone else R.string.home_title_pc)
+        homeHint.setText(if (phoneMode) R.string.home_hint_phone else R.string.home_hint_pc)
+        primary.setText(if (phoneMode && saved == null) R.string.scan_qr else R.string.connect)
+        secondary.visibility = if (phoneMode && saved != null) View.VISIBLE else View.GONE
+        secondary.setText(R.string.scan_qr_again)
+        hotspotButton.visibility = if (phoneMode) View.GONE else View.VISIBLE
+        primary.isEnabled = !busy
+        secondary.isEnabled = !busy
+        disconnectButton.isEnabled = !busy
+
         val bytes = files.filter { it.index in selected }.sumOf { it.size }
         selection.text = if (selected.isEmpty()) getString(R.string.nothing_selected)
         else getString(R.string.selected, selected.size, Formatter.formatShortFileSize(this, bytes))
         downloadButton.isEnabled = connected && !busy && selected.isNotEmpty()
         selectAll.isEnabled = connected && !busy && files.isNotEmpty()
-        connectDirectButton.visibility = if (!connected && savedCameraWifi() != null) View.VISIBLE else View.GONE
-        connectDirectButton.isEnabled = !busy
         selectAll.text = getString(if (files.isNotEmpty() && selected.size == files.size) R.string.select_none else R.string.select_all)
         adapter.notifyDataSetChanged()
     }

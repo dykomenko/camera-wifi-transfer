@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Camera Transfer</string>
-    <string name="connect">Connect to camera</string>
+    <string name="connect">Connect</string>
     <string name="disconnect">Disconnect</string>
-    <string name="hint_idle">On the camera choose Send to Computer. The phone and camera must be on the same Wi-Fi, or the camera on this phone\'s hotspot.</string>
-    <string name="camera_ip_hint">Camera IP (optional)</string>
+    <string name="camera_ip_hint">For example 192.168.1.20</string>
+    <string name="camera_ip_label">Camera IP (leave empty to find it automatically)</string>
     <string name="searching">Looking for the camera…</string>
-    <string name="connected">%1$s · %2$d files · free %3$s of %4$s</string>
     <string name="not_found">Camera not found. Is Send to Computer on, and is the camera on this Wi-Fi or hotspot? If it was used a moment ago, press Cancel on the camera and choose Send to Computer again.</string>
     <string name="selected">Selected: %1$d · %2$s</string>
     <string name="nothing_selected">Tap photos to select them</string>
@@ -18,20 +17,35 @@
     <string name="download_failed">Stopped: %1$s</string>
     <string name="on_phone">on phone</string>
     <string name="disconnected">Disconnected. The camera was sent to sleep.</string>
-    <string name="connection_lost">Connection to the camera was lost. Press Cancel on the camera, choose Send to Computer again and connect.</string>
-    <string name="connect_direct">Via the camera\'s Wi-Fi</string>
-    <string name="camera_wifi_joining">Joining the camera\'s Wi-Fi %1$s…</string>
-    <string name="camera_wifi_failed">Could not join the camera\'s Wi-Fi. On the camera open a photo in playback (or choose Send to Smartphone), touch the phone to the N mark again, or press the button.</string>
-    <string name="connected_direct">%1$s · %2$d files · camera Wi-Fi, JPEG</string>
+    <string name="connection_lost">Connection to the camera was lost. Start the send again on the camera and reconnect.</string>
+    <string name="camera_wifi_joining">Joining the camera\'s Wi-Fi %1$s… Tap Connect in the system window.</string>
+    <string name="camera_wifi_failed">Could not join the camera\'s Wi-Fi. On the camera leave the Send to Smartphone screen and open it again, then retry.</string>
     <string name="nfc_camera">NFC: %1$s, network %2$s</string>
     <string name="nfc_not_sony">This NFC tag is not a Sony camera.</string>
+    <string name="nfc_wrong_mode">The N mark is for the mode \"Like Sony\'s app\". Change the mode in settings (top right).</string>
     <string name="permission_needed">Allow access to nearby Wi-Fi devices so the app can join the camera\'s network.</string>
-    <string name="hint_nfc">Or: on the camera choose Send to Smartphone, then scan its QR code or, with this app open on screen, touch the phone to the N mark.</string>
-    <string name="scan_qr">Scan QR from camera</string>
+    <string name="scan_qr">Scan the camera\'s QR code</string>
+    <string name="scan_qr_again">Scan the QR code again</string>
     <string name="qr_prompt">Point at the QR code on the camera\'s Send to Smartphone screen</string>
     <string name="qr_not_camera">This QR code has no camera Wi-Fi details.</string>
     <string name="qr_tap_hint">Tap the picture to focus and set exposure there</string>
     <string name="close">Close</string>
     <string name="hotspot">Phone hotspot (2.4 GHz)</string>
-    <string name="hint_hotspot">Away from home: in the hotspot settings set the band to 2.4 GHz and switch the hotspot on, join the camera to it (Wi-Fi settings on the camera), then choose Send to Computer on the camera and press Connect here.</string>
+
+    <string name="settings_title">Connection mode</string>
+    <string name="settings_hint">Choose once; the app then always works this way.</string>
+    <string name="mode_pc_name">Like a computer</string>
+    <string name="mode_pc_desc">Fast, RAW and JPEG, any pictures from the card. Needs one 2.4 GHz network for phone and camera: home Wi-Fi or this phone\'s hotspot.</string>
+    <string name="mode_phone_name">Like Sony\'s app</string>
+    <string name="mode_phone_desc">Over the camera\'s own Wi-Fi, no router needed. You pick pictures on the camera; JPEG arrives.</string>
+    <string name="saved_camera">Camera: %1$s</string>
+    <string name="forget">Forget</string>
+    <string name="ready">Done</string>
+    <string name="mode_chip">%1$s  ·  change</string>
+    <string name="home_title_pc">Send to Computer</string>
+    <string name="home_hint_pc">On the camera choose Send to Computer. The phone and camera must share a 2.4 GHz network: home Wi-Fi, or the camera joined to this phone\'s hotspot.</string>
+    <string name="home_title_phone">Send to Smartphone</string>
+    <string name="home_hint_phone">On the camera choose Send to Smartphone and the pictures to send, then scan the QR code on its screen or touch the phone to the N mark.</string>
+    <string name="sub_pc">%1$d files · free %2$s of %3$s</string>
+    <string name="sub_direct">%1$d files · camera Wi-Fi, JPEG</string>
 </resources>
