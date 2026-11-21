@@ -496,7 +496,11 @@ class MainActivity : Activity() {
                             android.util.Log.w("CameraTransfer", "direct connect failed", error)
                             releaseCameraNetwork()
                             val reason = (error.message ?: error.toString()).lineSequence().first().take(200)
-                            say(getString(R.string.camera_wifi_failed) + System.lineSeparator() + reason, error = true)
+                            if ("multi-selection-not-offered" in (error.message ?: "")) {
+                                say(getString(R.string.multi_unsupported), error = true)
+                            } else {
+                                say(getString(R.string.camera_wifi_failed) + System.lineSeparator() + reason, error = true)
+                            }
                         }
                     }
                 }

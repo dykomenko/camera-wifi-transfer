@@ -48,4 +48,5 @@
     <string name="home_hint_phone">On the camera choose Send to Smartphone and the pictures to send, then scan the QR code on its screen or touch the phone to the N mark.</string>
     <string name="sub_pc">%1$d files · free %2$s of %3$s</string>
     <string name="sub_direct">%1$d files · camera Wi-Fi, JPEG</string>
+    <string name="multi_unsupported">The camera does not hand over several pictures at once in this mode. Choose one picture on the camera and connect again, or switch to \"Like a computer\" in settings for batches.</string>
 </resources>

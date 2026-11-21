@@ -18,6 +18,7 @@ import sony_soap
 from sony_soap import SonySoapClient, SonySoapError
 
 PTPIP_PORT = 15740
+MULTI_UNSUPPORTED = "multi-selection-not-offered"
 VIDEO_SUFFIXES = (".MP4", ".MOV", ".MTS", ".M2TS", ".AVI")
 
 _session = None  # "Send to Computer" (PTP/IP) session
@@ -218,13 +219,11 @@ def connect_direct(wait_seconds, diag_path=""):
     if not items:
         _probe_more(client)
         _run_probe_script(client)
-        items = _retry_browse(client, 15)
+        items = _retry_browse(client, 4)
     if not items:
-        # Maybe the camera offers the pictures only after the selection on its
-        # screen is confirmed: keep asking for a while.
-        items = _wait_for_selection(client, 60)
-    if not items:
-        raise SonySoapError("; ".join(dict.fromkeys(failures)) or "the camera lists no pictures")
+        # Several pictures chosen on the camera: it keeps its catalogue closed
+        # (UPnP 506 to everything) and drops its Wi-Fi after ~40 s.  Not solved.
+        raise SonySoapError(MULTI_UNSUPPORTED + ": " + ("; ".join(dict.fromkeys(failures)) or "no pictures"))
     _direct = client
     _items = items
     return _direct_listing(client, descriptor)
