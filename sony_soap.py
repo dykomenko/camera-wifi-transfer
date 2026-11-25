@@ -412,10 +412,11 @@ class SonySoapClient:
                 continue
         return found
 
-    def probe(self) -> CameraDescriptor:
-        """Fetch and validate ``DmsDescPush.xml`` and resolve control URLs."""
+    def probe(self, path: str = DESCRIPTOR_PATH) -> CameraDescriptor:
+        """Fetch and validate the device description (``DmsDescPush.xml`` unless
+        ``path`` says otherwise) and resolve control URLs."""
 
-        descriptor_url = self.base_url + DESCRIPTOR_PATH
+        descriptor_url = self.base_url + path
         payload = self._request_bytes("GET", descriptor_url)
         try:
             root = ET.fromstring(payload)
@@ -499,6 +500,7 @@ class SonySoapClient:
         *,
         starting_index: int = 0,
         requested_count: int = 9999,
+        sort_criteria: str = "",
     ) -> BrowsePage:
         """Return one page of direct children for a UPnP object/container."""
 
@@ -517,7 +519,7 @@ class SonySoapClient:
                 ("Filter", "*"),
                 ("StartingIndex", str(starting_index)),
                 ("RequestedCount", str(requested_count)),
-                ("SortCriteria", ""),
+                ("SortCriteria", sort_criteria),
             ),
         )
         return self._parse_browse_response(payload)

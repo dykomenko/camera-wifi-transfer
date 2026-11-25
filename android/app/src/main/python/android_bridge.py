@@ -10,6 +10,7 @@ import socket
 from concurrent.futures import ThreadPoolExecutor
 
 import os
+import threading
 import time
 
 import airmtp
@@ -25,6 +26,111 @@ _session = None  # "Send to Computer" (PTP/IP) session
 _files = []
 _direct = None  # "Send to Smartphone" (camera's own Wi-Fi) client
 _items = []
+
+
+class _JavaHeaders(dict):
+    """Case-insensitive view of the response headers."""
+
+    def get(self, name, default=None):
+        return super().get(str(name).lower(), default)
+
+
+class _JavaResponse:
+    """The little part of a urllib response the SOAP client uses, on top of
+    Android's own HttpURLConnection (the class Sony's app talks to the camera
+    with)."""
+
+    def __init__(self, connection, stream, status):
+        self._connection = connection
+        self._stream = stream
+        self.status = status
+        self.headers = _JavaHeaders()
+        fields = connection.getHeaderFields()
+        for key in fields.keySet().toArray():
+            if key is None:
+                continue
+            values = fields.get(key)
+            if values is not None and values.size() > 0:
+                self.headers[str(key).lower()] = str(values.get(values.size() - 1))
+
+    def getcode(self):
+        return self.status
+
+    def read(self, size=-1):
+        if self._stream is None:
+            return b""
+        from java import jarray, jbyte
+
+        wanted = None if size is None or size < 0 else int(size)
+        chunks = []
+        got = 0
+        while wanted is None or got < wanted:
+            want = 65536 if wanted is None else min(65536, wanted - got)
+            buffer = jarray(jbyte)(want)
+            count = self._stream.read(buffer)
+            if count < 0:
+                break
+            chunks.append(bytes(buffer)[:count])
+            got += count
+        return b"".join(chunks)
+
+    def close(self):
+        try:
+            if self._stream is not None:
+                self._stream.close()
+        finally:
+            self._connection.disconnect()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
+_HEADER_CASE = {
+    "Soapaction": "SOAPACTION",
+    "X-av-client-info": "X-AV-Client-Info",
+    "User-agent": "User-Agent",
+    "Content-type": "Content-Type",
+}
+
+
+def _java_urlopen(request, timeout=10.0):
+    """urllib.request.urlopen look-alike using java.net.HttpURLConnection."""
+
+    import urllib.error
+    from java import jarray, jbyte, jclass
+
+    connection = jclass("java.net.URL")(request.full_url).openConnection()
+    connection.setConnectTimeout(int(timeout * 1000))
+    connection.setReadTimeout(int(timeout * 1000))
+    connection.setRequestMethod(request.get_method())
+    for name, value in request.header_items():
+        # urllib capitalises header names; Sony's app writes them as below.
+        connection.setRequestProperty(_HEADER_CASE.get(name, name), value)
+    body = request.data
+    if body is not None:
+        connection.setDoOutput(True)
+        out = connection.getOutputStream()
+        out.write(_java_bytes(body))
+        out.flush()
+    try:
+        status = connection.getResponseCode()
+        stream = connection.getErrorStream() if status >= 400 else connection.getInputStream()
+    except Exception as error:  # java.io.IOException and friends
+        connection.disconnect()
+        raise urllib.error.URLError(str(error)) from None
+    response = _JavaResponse(connection, stream, status)
+    if status >= 400:
+        raise urllib.error.HTTPError(request.full_url, status, "", response.headers, response)
+    return response
+
+
+def _java_bytes(data):
+    from java import jarray, jbyte
+
+    return jarray(jbyte)(data)
 
 
 def _port_open(address, timeout):
@@ -163,11 +269,18 @@ def connect_direct(wait_seconds, diag_path=""):
             os.remove(_diag_path)
         except OSError:
             pass
-    client = SonySoapClient(timeout=10.0)
+    client = SonySoapClient(timeout=10.0, opener=_java_urlopen)
     deadline = time.time() + float(wait_seconds)
+    # Sony's own app first searches with SSDP and then reads the description
+    # the camera names in its answer: /dd.xml.
+    _ssdp_search(client.host)
     while True:
         try:
-            descriptor = client.probe()
+            try:
+                descriptor = client.probe("/dd.xml")
+            except SonySoapError as error:
+                _diag("dd.xml not available:", error)
+                descriptor = client.probe()
             break
         except SonySoapError as error:
             _diag("probe not answered yet:", error)
@@ -175,15 +288,22 @@ def connect_direct(wait_seconds, diag_path=""):
                 raise
             time.sleep(1.0)
     _diag("camera:", descriptor.manufacturer, descriptor.model_name, descriptor.friendly_name)
-    # Order recorded from Sony's own app (socket log): descriptor on 64321,
-    # then the camera's device-info files on 60151, and only then the SOAP
-    # calls.  Asking for the list first makes the camera answer 506.
-    _fetch_device_info(client.host)
+    # Sony's own app (recorded with a patched copy): dd.xml, then
+    # DigitalImagingDesc.xml, and the device-info files are fetched while the
+    # first catalogue request already goes out.
+    offered = _read_digital_imaging_desc(client)
+    info_thread = None
+    if b"X_CurrentContent_URL" in offered:
+        # "Send this image": descriptor, device-info files, then the picture.
+        _fetch_device_info(client.host)
+    else:
+        info_thread = threading.Thread(target=_fetch_device_info, args=(client.host,), daemon=True)
+        info_thread.start()
 
     # "Send this image" mode: the camera offers the picture it is showing in
     # DigitalImagingDesc.xml (X_CurrentContent_URL).  The catalogue and
     # X_TransferStart are not available then (they answer UPnP 506).
-    current = _read_current_content(client)
+    current = _read_current_content(client) if info_thread is None else []
     if current:
         _direct = client
         _items = current
@@ -191,6 +311,18 @@ def connect_direct(wait_seconds, diag_path=""):
 
     items = None
     failures = []
+    try:
+        pushed = _push_flow(client)
+    except SonySoapError as error:
+        _diag("push flow failed:", error)
+        failures.append(f"push: {error}")
+        pushed = []
+    if info_thread is not None:
+        info_thread.join(30)
+    if pushed:
+        _direct = client
+        _items = pushed
+        return _direct_listing(client, descriptor)
     try:
         client.start_transfer()
         _diag("X_TransferStart ok")
@@ -218,7 +350,6 @@ def connect_direct(wait_seconds, diag_path=""):
             failures.append(f"{browse_root}: {error}")
     if not items:
         _probe_more(client)
-        _run_probe_script(client)
         items = _retry_browse(client, 4)
     if not items:
         # Several pictures chosen on the camera: it keeps its catalogue closed
@@ -227,6 +358,122 @@ def connect_direct(wait_seconds, diag_path=""):
     _direct = client
     _items = items
     return _direct_listing(client, descriptor)
+
+
+def _read_digital_imaging_desc(client):
+    try:
+        raw = client._request_bytes("GET", client.base_url + "/DigitalImagingDesc.xml")
+    except SonySoapError as error:
+        _diag("DigitalImagingDesc.xml unreadable:", error)
+        return b""
+    _diag("DigitalImagingDesc.xml:", len(raw), "bytes")
+    return raw
+
+
+def _ssdp_search(host):
+    """Multicast M-SEARCH like Sony's app; the answer is only logged."""
+
+    crlf = chr(13) + chr(10)
+    message = crlf.join([
+        "M-SEARCH * HTTP/1.1",
+        "HOST: 239.255.255.250:1900",
+        'MAN: "ssdp:discover"',
+        "MX: 2",
+        "ST: ssdp:all",
+        "",
+        "",
+    ]).encode()
+    sock = None
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(1.5)
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+        sock.sendto(message, ("239.255.255.250", 1900))
+        sock.sendto(message, (host, 1900))
+        end = time.time() + 3.0
+        while time.time() < end:
+            try:
+                data, source = sock.recvfrom(4096)
+            except OSError:
+                break
+            text = data.decode("utf-8", "replace").replace(crlf, " | ")
+            _diag("SSDP from", source[0], text[:300])
+            if source[0] == host:
+                break
+    except OSError as error:
+        _diag("SSDP search failed:", error)
+    finally:
+        if sock is not None:
+            sock.close()
+
+
+_PUSH_PAGE = 4
+_pushed_done = 0
+
+
+def _profile_of(protocol_info):
+    found = re.search(r"DLNA\.ORG_PN=([A-Z_0-9]+)", protocol_info or "")
+    return found.group(1) if found else ""
+
+
+def _push_flow(client):
+    """Pictures chosen on the camera, in the order Sony's own app asks for them
+    (recorded with a patched copy of it): the first catalogue request comes
+    before X_TransferStart, then the transfer is started and the list is read
+    in pages sorted by date."""
+
+    global _pushed_done
+    first = client.browse_page("PushRoot", starting_index=0, requested_count=1)
+    total = first.total_matches
+    _diag("PushRoot lists", total, "pictures")
+    if total <= 0:
+        return []
+    try:
+        client.start_transfer()
+        _diag("X_TransferStart ok")
+    except SonySoapError as error:
+        _diag("X_TransferStart rejected:", error)
+    try:
+        client._soap_request(client._xpush_control_url, sony_soap.XPUSH_SERVICE, "X_GetPushRoot", ())
+    except SonySoapError as error:
+        _diag("X_GetPushRoot failed:", error)
+    media = []
+    seen = set()
+    index = 0
+    while index < total:
+        page = client.browse_page("PushRoot", starting_index=index, requested_count=_PUSH_PAGE,
+                                  sort_criteria="-dc:date")
+        if page.number_returned <= 0:
+            break
+        for item in page.items:
+            if item.object_id not in seen:
+                seen.add(item.object_id)
+                media.append(item)
+        index += page.number_returned
+    result = []
+    for item in media:
+        urls = {}
+        for resource in item.resources:
+            urls[_profile_of(resource.protocol_info)] = client._camera_url(resource.url)
+        stem = item.title.rsplit(".", 1)[0]
+        result.append(_CurrentContent(stem, urls))
+    _pushed_done = 0
+    _diag("push flow:", len(result), "pictures")
+    return result
+
+
+def _push_progress(done):
+    """Tell the camera how far the transfer is, as Sony's app does."""
+
+    if _direct is None or not _items:
+        return
+    try:
+        _direct._soap_request(
+            _direct._xpush_control_url, sony_soap.XPUSH_SERVICE, "X_TransferProgress",
+            (("NumTotal", str(len(_items))), ("NumTransferd", str(done))),
+        )
+    except SonySoapError as error:
+        _diag("X_TransferProgress failed:", error)
 
 
 def _wait_for_selection(client, seconds):
@@ -344,25 +591,6 @@ def _read_current_content(client, quiet=False):
         _diag("current content:", item.title, sorted(urls), "size", item.size)
         items.append(item)
     return items
-
-
-def _run_probe_script(client):
-    """Developer aid while the camera protocol is being worked out: run
-    probe.py from the app's external files folder (next to camera-direct.log,
-    pushed with adb) against the connected camera.  Only the developer can
-    put a file there."""
-
-    if not _diag_path:
-        return
-    script = os.path.join(os.path.dirname(_diag_path), "probe.py")
-    if not os.path.exists(script):
-        return
-    try:
-        with open(script, encoding="utf-8") as handle:
-            code = handle.read()
-        exec(compile(code, script, "exec"), {"client": client, "diag": _diag, "host": client.host})
-    except Exception as error:  # diagnostics only
-        _diag("probe.py failed:", repr(error))
 
 
 def _fetch_device_info(host):
@@ -621,7 +849,11 @@ def download(index, target, listener):
             os.remove(target)
         expected = item.size or 0
         if isinstance(item, _CurrentContent):
-            return _download_url(item.best_url(), target, expected, listener)
+            global _pushed_done
+            _push_progress(_pushed_done)
+            path = _download_url(item.best_url(), target, expected, listener)
+            _pushed_done += 1
+            return path
         path = _direct.download(
             item, target, progress_cb=lambda done, total=None: listener.onProgress(done, total or expected)
         )
